@@ -10,9 +10,10 @@ export const registerProfile: RequestHandler = async (req, res) => {
     middleName,
     birthDate,
     profilePictureUrl,
+    fromOAuth,
   } = req.body;
 
-  if (!uid || !email || !firstName || !lastName) {
+  if (!uid || !email || !firstName) {
     return res
       .status(400)
       .json({message: "Missing required fields", success: false});
@@ -28,6 +29,7 @@ export const registerProfile: RequestHandler = async (req, res) => {
         middleName,
         birthDate,
         profilePictureUrl,
+        fromOAuth,
       },
     },
     {upsert: true}
