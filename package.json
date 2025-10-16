@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "dev": "nodemon src/index.ts",
-    "build": "tsc",
+    "build": "npm install && tsc",
     "start": "node dist/index.js"
   },
   "keywords": [],
@@ -17,13 +17,13 @@
     "cors": "^2.8.5",
     "mongoose": "^8.19.0",
     "dotenv": "^17.2.3",
-    "@types/node": "^24.6.2",
+    "@types/node": "^22.0.0",
     "@types/express": "^5.0.3",
-    "@types/cors": "^2.8.19"
+    "@types/cors": "^2.8.19",
+    "typescript": "^5.9.3"
   },
   "devDependencies": {
     "nodemon": "^3.1.10",
-    "ts-node": "^10.9.2",
-    "typescript": "^5.9.3"
+    "ts-node": "^10.9.2"
   }
 }
