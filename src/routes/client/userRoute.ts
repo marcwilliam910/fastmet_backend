@@ -1,9 +1,10 @@
-import {Router} from "express";
+import { Router } from "express";
 import {
   getProfile,
   registerProfile,
   updateProfile,
-} from "../controllers/userController";
+} from "../../controllers/client/userController";
+
 const router = Router();
 
 router.get("/:uid", getProfile);
