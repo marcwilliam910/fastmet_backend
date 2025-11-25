@@ -19,7 +19,7 @@ app.use(cors());
 app.use(express.json());
 
 app.use("/api/user", userRoute);
-app.use("/api/booking", bookingRoute);
+app.use("/api/client/booking", bookingRoute);
 app.use("/api/driver/booking", driverBookingRoute);
 
 const server = http.createServer(app);

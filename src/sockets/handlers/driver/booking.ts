@@ -1,46 +1,86 @@
-import { Socket } from "socket.io";
+import { Server, Socket } from "socket.io";
 import { CustomSocket } from "../../socket";
+import BookingModel from "../../../models/Booking";
+import { withErrorHandling } from "../../../utils/socketWrapper";
+import { SOCKET_ROOMS } from "../../../constants/socketRooms";
 
-export const handleDriverDuty = (
-  socket: CustomSocket,
-  onDutyDrivers: Map<string, any>
-) => {
-  socket.on(
-    "toggleDuty",
-    ({
-      isOnDuty,
-      location,
+export const acceptBooking = (socket: CustomSocket, io: Server) => {
+  const on = withErrorHandling(socket);
+
+  on(
+    "acceptBooking",
+    async ({
+      bookingId,
+      driverData,
     }: {
-      isOnDuty: boolean;
-      location: { lat: number; lng: number };
+      bookingId: string;
+      driverData: { id: string; name: string; rating: number };
     }) => {
-      if (isOnDuty) {
-        onDutyDrivers.set(socket.userId, {
-          socketId: socket.id,
-          location,
-          lastUpdate: new Date(),
-        });
-        console.log(`✅ Driver ${socket.userId} is now ON duty`);
-        socket.emit("dutyStatusChanged", { isOnDuty: true });
-      } else {
-        onDutyDrivers.delete(socket.userId);
-        console.log(`❌ Driver ${socket.userId} is now OFF duty`);
-        socket.emit("dutyStatusChanged", { isOnDuty: false });
+      if (!bookingId) throw new Error("bookingId is required");
+      if (!driverData.id || !driverData.name || driverData.rating == null) {
+        throw new Error("Invalid driver data");
       }
+
+      const booking = await BookingModel.findOneAndUpdate(
+        { _id: bookingId, status: "pending" },
+
+        {
+          driver: driverData,
+          status: "active",
+        },
+        { new: true }
+      );
+
+      if (!booking) {
+        throw new Error("Booking not found or already assigned");
+      }
+
+      // ✅ Mark driver as unavailable (on a trip now)
+      socket.data.isAvailable = false;
+      socket.leave(SOCKET_ROOMS.AVAILABLE);
+
+      // Notify the client who booked
+      console.log("BOOKING ACCEPTED");
+      io.to(booking.userId).emit("bookingAccepted", {
+        userId: booking.userId,
+      });
+
+      // Confirm to driver
+      socket.emit("acceptanceConfirmed", { bookingId });
+
+      // Notify other drivers this booking is taken
+      io.to(SOCKET_ROOMS.AVAILABLE).emit("bookingTaken", { bookingId });
+
+      console.log(
+        `✅ Driver ${socket.userId} accepted booking ${bookingId} and is now UNAVAILABLE`
+      );
     }
   );
 };
 
-// Driver updates location while on duty
-export const handleDriverLocation = (
-  socket: CustomSocket,
-  onDutyDrivers: Map<string, any>
-) => {
-  socket.on("updateLocation", (location: { lat: number; lng: number }) => {
-    const driver = onDutyDrivers.get(socket.userId);
-    if (driver) {
-      driver.location = location;
-      driver.lastUpdate = new Date();
-    }
+export const completeBooking = (socket: CustomSocket) => {
+  const on = withErrorHandling(socket);
+
+  on("completeBooking", async ({ bookingId }: { bookingId: string }) => {
+    const booking = await BookingModel.findByIdAndUpdate(
+      bookingId,
+      { status: "completed" },
+      { new: true }
+    );
+
+    if (!booking) throw new Error("Booking not found");
+
+    // ✅ Mark driver as available again
+    socket.data.isAvailable = true;
+    socket.join(SOCKET_ROOMS.AVAILABLE);
+
+    // Notify client
+    socket.to(booking.userId).emit("bookingCompleted", { bookingId });
+
+    socket.emit("completionConfirmed", { bookingId });
+
+    console.log(
+      `✅ Booking ${bookingId} completed, driver ${socket.userId} is AVAILABLE again`
+    );
   });
 };

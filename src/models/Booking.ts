@@ -2,6 +2,11 @@ import { Schema, Document, model } from "mongoose";
 
 export interface IBooking extends Document {
   userId: string;
+  driver: {
+    id: string;
+    name: string;
+    rating: number;
+  } | null;
   pickUp: {
     name: string;
     address: string;
@@ -39,7 +44,7 @@ export interface IBooking extends Document {
     price: number;
     icon?: string;
   }[];
-  status: string; // "pending" | "accepted" | "cancelled"
+  status: string; // "pending" | "active" | "cancelled"
   createdAt: Date;
   updatedAt: Date;
 }
@@ -47,6 +52,14 @@ export interface IBooking extends Document {
 const bookingSchema: Schema = new Schema<IBooking>(
   {
     userId: { type: String, required: true },
+    driver: {
+      type: {
+        id: { type: String },
+        name: { type: String },
+        rating: { type: Number },
+      },
+      default: null,
+    },
     pickUp: {
       name: { type: String, required: true },
       address: { type: String, required: true },

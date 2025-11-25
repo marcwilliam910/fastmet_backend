@@ -1,26 +1,15 @@
 import { Server, Socket } from "socket.io";
 import { handleBookingSocket } from "./handlers/client/booking";
 import { on } from "events";
-import {
-  handleDriverDuty,
-  handleDriverLocation,
-} from "./handlers/driver/booking";
+import { acceptBooking } from "./handlers/driver/booking";
+import { toggleOnDuty, updateDriverLocation } from "./handlers/driver/duty";
+import { SOCKET_ROOMS } from "../constants/socketRooms";
 
 // Extend Socket type to include custom properties
 export interface CustomSocket extends Socket {
   userId: string;
   userType: "driver" | "client";
 }
-
-// In-memory Map to track on-duty drivers - or redis
-const onDutyDrivers = new Map<
-  string,
-  {
-    socketId: string;
-    location: { lat: number; lng: number };
-    lastUpdate: Date;
-  }
->();
 
 let io: Server;
 
@@ -46,7 +35,7 @@ export const initSocket = (server: any) => {
       // TODO: Verify JWT token
       // const decoded = jwt.verify(token, process.env.JWT_SECRET);
       // socket.userId = decoded.userId;
-      // socket.userType = decoded.userType; // 'driver' or 'client'
+      // socket.userType = decoded.userType;
 
       // For now, using query params (replace with JWT)
       socket.userId = socket.handshake.query.userId as string;
@@ -58,7 +47,7 @@ export const initSocket = (server: any) => {
     }
   });
 
-  io.on("connection", (s) => {
+  io.on("connection", async (s) => {
     const socket = s as CustomSocket;
     console.log(
       `New ${socket.userType} connected: ${socket.id} (User: ${socket.userId})`
@@ -66,43 +55,41 @@ export const initSocket = (server: any) => {
 
     // Driver-specific handlers
     if (socket.userType === "driver") {
-      handleDriverDuty(socket, onDutyDrivers);
-      handleDriverLocation(socket, onDutyDrivers);
+      toggleOnDuty(socket);
+      updateDriverLocation(socket);
+      acceptBooking(socket, io);
     }
 
     // Client-specific handlers
     if (socket.userType === "client") {
+      socket.join(socket.userId);
       handleBookingSocket(socket, io);
-      // handleMessageSocket(socket, io);
+
+      console.log("SOCKET ID: " + socket.userId);
+
+      const clients = await io.in(socket.userId).fetchSockets();
+      console.log(
+        "Sockets in client room:",
+        clients.map((s) => s.id)
+      );
     }
 
     socket.on("disconnect", () => {
       console.log(`Client disconnected: ${socket.id}`);
 
-      // Auto off-duty when driver disconnects
-      if (socket.userType === "driver") {
-        onDutyDrivers.delete(socket.userId);
-        console.log(`Driver ${socket.userId} auto OFF duty (disconnected)`);
-      }
+      // ✅ Rooms are automatically cleaned up on disconnect
+      // No manual cleanup needed!
     });
   });
 
-  // Stale driver cleanup (safety net)
-  setInterval(() => {
-    const now = Date.now();
-    for (const [driverId, driver] of onDutyDrivers.entries()) {
-      if (now - driver.lastUpdate.getTime() > 5 * 60 * 1000) {
-        // 5 min
-        onDutyDrivers.delete(driverId);
-        console.log(`Removed stale driver ${driverId}`);
-      }
-    }
-  }, 60000); // Check every minute
+  // ✅ Log stats periodically
+  setInterval(async () => {
+    const onDutySockets = await io.in(SOCKET_ROOMS.ON_DUTY).fetchSockets();
+    const availableSockets = await io.in(SOCKET_ROOMS.AVAILABLE).fetchSockets();
 
-  // Log stats
-  setInterval(() => {
-    console.log(`📊 Active on-duty drivers: ${onDutyDrivers.size}`);
-  }, 30000);
+    console.log(`📊 On-duty drivers: ${onDutySockets.length}`);
+    console.log(`📊 Available drivers: ${availableSockets.length}`);
+  }, 30000); // Every 30 seconds
 
   return io;
 };
