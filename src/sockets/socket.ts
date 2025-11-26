@@ -64,21 +64,10 @@ export const initSocket = (server: any) => {
     if (socket.userType === "client") {
       socket.join(socket.userId);
       handleBookingSocket(socket, io);
-
-      console.log("SOCKET ID: " + socket.userId);
-
-      const clients = await io.in(socket.userId).fetchSockets();
-      console.log(
-        "Sockets in client room:",
-        clients.map((s) => s.id)
-      );
     }
 
     socket.on("disconnect", () => {
       console.log(`Client disconnected: ${socket.id}`);
-
-      // ✅ Rooms are automatically cleaned up on disconnect
-      // No manual cleanup needed!
     });
   });
 

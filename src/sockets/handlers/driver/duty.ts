@@ -21,11 +21,9 @@ export const toggleOnDuty = (socket: CustomSocket) => {
           throw new Error("Location is required when going on duty");
         }
 
-        // Join on-duty room
         socket.join(SOCKET_ROOMS.ON_DUTY);
-        socket.join(SOCKET_ROOMS.AVAILABLE); // Initially available
+        socket.join(SOCKET_ROOMS.AVAILABLE);
 
-        // Store driver data in socket
         socket.data.location = location;
         socket.data.lastLocationUpdate = new Date();
 
@@ -120,18 +118,18 @@ export const updateDriverLocation = (socket: CustomSocket) => {
 };
 
 // Mark driver as unavailable when they accept a booking
-export const setDriverAvailability = (socket: CustomSocket) => {
-  const on = withErrorHandling(socket);
+// export const setDriverAvailability = (socket: CustomSocket) => {
+//   const on = withErrorHandling(socket);
 
-  on("setAvailability", (data: { isAvailable: boolean }) => {
-    if (data.isAvailable) {
-      socket.join(SOCKET_ROOMS.AVAILABLE);
-      console.log(`✅ Driver ${socket.userId} joined AVAILABLE room`);
-    } else {
-      socket.leave(SOCKET_ROOMS.AVAILABLE);
-      console.log(`❌ Driver ${socket.userId} left AVAILABLE room`);
-    }
+//   on("setAvailability", (data: { isAvailable: boolean }) => {
+//     if (data.isAvailable) {
+//       socket.join(SOCKET_ROOMS.AVAILABLE);
+//       console.log(`✅ Driver ${socket.userId} joined AVAILABLE room`);
+//     } else {
+//       socket.leave(SOCKET_ROOMS.AVAILABLE);
+//       console.log(`❌ Driver ${socket.userId} left AVAILABLE room`);
+//     }
 
-    socket.emit("availabilityChanged", { isAvailable: data.isAvailable });
-  });
-};
+//     socket.emit("availabilityChanged", { isAvailable: data.isAvailable });
+//   });
+// };

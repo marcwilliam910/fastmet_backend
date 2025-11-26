@@ -32,15 +32,18 @@ export const acceptBooking = (socket: CustomSocket, io: Server) => {
       );
 
       if (!booking) {
-        throw new Error("Booking not found or already assigned");
+        socket.emit("acceptBookingError", {
+          message: "This booking has already been accepted by another driver.",
+        });
+        return; // Stop execution cleanly
       }
 
+      const room = `BOOKING_${bookingId}`;
+
       // ✅ Mark driver as unavailable (on a trip now)
-      socket.data.isAvailable = false;
       socket.leave(SOCKET_ROOMS.AVAILABLE);
 
       // Notify the client who booked
-      console.log("BOOKING ACCEPTED");
       io.to(booking.userId).emit("bookingAccepted", {
         userId: booking.userId,
       });
@@ -49,11 +52,13 @@ export const acceptBooking = (socket: CustomSocket, io: Server) => {
       socket.emit("acceptanceConfirmed", { bookingId });
 
       // Notify other drivers this booking is taken
-      io.to(SOCKET_ROOMS.AVAILABLE).emit("bookingTaken", { bookingId });
+      io.to(room).emit("bookingTaken", { bookingId });
 
       console.log(
         `✅ Driver ${socket.userId} accepted booking ${bookingId} and is now UNAVAILABLE`
       );
+
+      io.in(room).socketsLeave(room);
     }
   );
 };
@@ -71,7 +76,6 @@ export const completeBooking = (socket: CustomSocket) => {
     if (!booking) throw new Error("Booking not found");
 
     // ✅ Mark driver as available again
-    socket.data.isAvailable = true;
     socket.join(SOCKET_ROOMS.AVAILABLE);
 
     // Notify client
