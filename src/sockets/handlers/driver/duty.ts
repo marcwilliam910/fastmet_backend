@@ -81,6 +81,7 @@ export const updateDriverLocation = (socket: CustomSocket) => {
       // ✅ Check room membership instead of socket.data
       if (!socket.rooms.has(SOCKET_ROOMS.ON_DUTY)) {
         socket.emit("error", { message: "Driver must be on duty" });
+        throw new Error("Driver must be on duty");
         return;
       }
 

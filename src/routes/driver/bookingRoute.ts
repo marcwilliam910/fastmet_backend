@@ -1,9 +1,13 @@
 import { Router } from "express";
 
-import { getPendingBookings } from "../../controllers/driver/bookingController";
+import {
+  getActiveBookings,
+  getPendingBookings,
+} from "../../controllers/driver/bookingController";
 
 const router = Router();
 
 router.get("/pending", getPendingBookings);
+router.get("/active/:driverId", getActiveBookings);
 
 export default router;

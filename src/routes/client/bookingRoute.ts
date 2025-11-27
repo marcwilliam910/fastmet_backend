@@ -1,8 +1,14 @@
 import { Router } from "express";
-import { getBookings } from "../../controllers/client/bookingController";
+import {
+  getBooking,
+  getBookingsByStatus,
+  getBookingsCount,
+} from "../../controllers/client/bookingController";
 
 const router = Router();
 
-router.get("/:userId", getBookings);
+router.get("/:userId", getBookingsByStatus);
+router.get("/counts/:userId", getBookingsCount);
+router.get("/live/:bookingId", getBooking);
 
 export default router;

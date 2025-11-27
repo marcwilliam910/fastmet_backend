@@ -53,13 +53,17 @@ const bookingSchema: Schema = new Schema<IBooking>(
   {
     userId: { type: String, required: true },
     driver: {
-      type: {
-        id: { type: String },
-        name: { type: String },
-        rating: { type: Number },
-      },
+      type: new Schema(
+        {
+          id: { type: String },
+          name: { type: String },
+          rating: { type: Number },
+        },
+        { _id: false } // this prevents Mongoose from adding a default _id
+      ),
       default: null,
     },
+
     pickUp: {
       name: { type: String, required: true },
       address: { type: String, required: true },
@@ -101,7 +105,7 @@ const bookingSchema: Schema = new Schema<IBooking>(
     ],
     status: { type: String, required: true, default: "pending" },
   },
-  { timestamps: true } // adds createdAt and updatedAt automatically
+  { timestamps: true }
 );
 
 const BookingModel = model<IBooking>("Booking", bookingSchema);

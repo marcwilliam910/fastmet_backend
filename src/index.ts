@@ -18,7 +18,7 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
-app.use("/api/user", userRoute);
+app.use("/api/client/user", userRoute);
 app.use("/api/client/booking", bookingRoute);
 app.use("/api/driver/booking", driverBookingRoute);
 
