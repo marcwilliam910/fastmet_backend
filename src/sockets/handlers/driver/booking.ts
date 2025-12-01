@@ -88,3 +88,25 @@ export const completeBooking = (socket: CustomSocket) => {
     );
   });
 };
+
+export const driverLocation = (socket: CustomSocket, io: Server) => {
+  socket.on(
+    "driverLocation",
+    ({
+      clientUserId,
+      bookingId,
+      driverLoc,
+    }: {
+      clientUserId: string;
+      bookingId: string;
+      driverLoc: { lat: number; lng: number; heading: number };
+    }) => {
+      if (!driverLoc || !clientUserId || !bookingId) return;
+
+      console.log(`📍 Sending driver location to client ${clientUserId}`);
+
+      // Send location back to the client
+      io.to(clientUserId).emit("driverLocationResponse", { driverLoc });
+    }
+  );
+};

@@ -1,1 +1,1 @@
-export const MAX_DRIVER_RADIUS_KM = 10;
+export const MAX_DRIVER_RADIUS_KM = 10; // 10km

@@ -131,3 +131,24 @@ export const handleBookingSocket = (socket: CustomSocket, io: Server) => {
     console.log(`📤 Booking ${booking._id} sent to room ${temporaryRoom}`);
   });
 };
+
+export const getDriverLocation = (socket: CustomSocket, io: Server) => {
+  socket.on(
+    "getDriverLocation",
+    ({ bookingId, driverId }: { bookingId: string; driverId: string }) => {
+      if (!bookingId || !driverId) return;
+
+      const clientUserId = socket.userId;
+
+      console.log("BOOKING ID: ", bookingId);
+
+      console.log(`📡 Forwarding location request to driver ${driverId}`);
+
+      // Forward request to driver
+      io.to(driverId).emit("requestDriverLocation", {
+        bookingId,
+        clientUserId,
+      });
+    }
+  );
+};

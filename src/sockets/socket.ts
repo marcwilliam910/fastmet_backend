@@ -1,7 +1,10 @@
 import { Server, Socket } from "socket.io";
-import { handleBookingSocket } from "./handlers/client/booking";
+import {
+  getDriverLocation,
+  handleBookingSocket,
+} from "./handlers/client/booking";
 import { on } from "events";
-import { acceptBooking } from "./handlers/driver/booking";
+import { acceptBooking, driverLocation } from "./handlers/driver/booking";
 import { toggleOnDuty, updateDriverLocation } from "./handlers/driver/duty";
 import { SOCKET_ROOMS } from "../constants/socketRooms";
 
@@ -55,15 +58,18 @@ export const initSocket = (server: any) => {
 
     // Driver-specific handlers
     if (socket.userType === "driver") {
+      socket.join(socket.userId);
       toggleOnDuty(socket);
       updateDriverLocation(socket);
       acceptBooking(socket, io);
+      driverLocation(socket, io);
     }
 
     // Client-specific handlers
     if (socket.userType === "client") {
       socket.join(socket.userId);
       handleBookingSocket(socket, io);
+      getDriverLocation(socket, io);
     }
 
     socket.on("disconnect", () => {
