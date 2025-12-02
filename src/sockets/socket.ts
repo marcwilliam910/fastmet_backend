@@ -56,9 +56,11 @@ export const initSocket = (server: any) => {
       `New ${socket.userType} connected: ${socket.id} (User: ${socket.userId})`
     );
 
+    // Join user's personal room (for targeted emissions)
+    socket.join(socket.userId);
+
     // Driver-specific handlers
     if (socket.userType === "driver") {
-      socket.join(socket.userId);
       toggleOnDuty(socket);
       updateDriverLocation(socket);
       acceptBooking(socket, io);
@@ -67,7 +69,6 @@ export const initSocket = (server: any) => {
 
     // Client-specific handlers
     if (socket.userType === "client") {
-      socket.join(socket.userId);
       handleBookingSocket(socket, io);
       getDriverLocation(socket, io);
     }
