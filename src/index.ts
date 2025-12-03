@@ -9,7 +9,9 @@ import { initSocket } from "./sockets/socket";
 import bookingRoute from "./routes/client/bookingRoute";
 import driverBookingRoute from "./routes/driver/bookingRoute";
 import userRoute from "./routes/client/userRoute";
-import authRoute from "./routes/driver/authRoute";
+import authDriverRoute from "./routes/driver/authRoute";
+import profileDriverRoute from "./routes/driver/profileRoute";
+import { authenticateJWT } from "./middlewares/verifyToken";
 
 dotenv.config();
 
@@ -18,12 +20,14 @@ const PORT = process.env.PORT || 3000;
 
 app.use(cors());
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 app.use("/api/client/user", userRoute);
 app.use("/api/client/booking", bookingRoute);
 
-app.use("/api/driver/booking", driverBookingRoute);
-app.use("/api/driver/auth", authRoute);
+app.use("/api/driver/auth", authDriverRoute);
+app.use("/api/driver/booking", authenticateJWT, driverBookingRoute);
+app.use("/api/driver/profile", authenticateJWT, profileDriverRoute);
 
 const server = http.createServer(app);
 
