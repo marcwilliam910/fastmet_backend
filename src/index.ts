@@ -9,6 +9,7 @@ import { initSocket } from "./sockets/socket";
 import bookingRoute from "./routes/client/bookingRoute";
 import driverBookingRoute from "./routes/driver/bookingRoute";
 import userRoute from "./routes/client/userRoute";
+import authRoute from "./routes/driver/authRoute";
 
 dotenv.config();
 
@@ -20,7 +21,9 @@ app.use(express.json());
 
 app.use("/api/client/user", userRoute);
 app.use("/api/client/booking", bookingRoute);
+
 app.use("/api/driver/booking", driverBookingRoute);
+app.use("/api/driver/auth", authRoute);
 
 const server = http.createServer(app);
 

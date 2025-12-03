@@ -7,6 +7,7 @@ import { on } from "events";
 import { acceptBooking, driverLocation } from "./handlers/driver/booking";
 import { toggleOnDuty, updateDriverLocation } from "./handlers/driver/duty";
 import { SOCKET_ROOMS } from "../constants/socketRooms";
+import jwt from "jsonwebtoken";
 
 // Extend Socket type to include custom properties
 export interface CustomSocket extends Socket {
@@ -35,15 +36,14 @@ export const initSocket = (server: any) => {
     }
 
     try {
-      // TODO: Verify JWT token
-      // const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      // socket.userId = decoded.userId;
-      // socket.userType = decoded.userType;
+      const decoded = jwt.verify(token, process.env.JWT_SECRET!) as {
+        driverId: string;
+        phoneNumber: string;
+        userType: "driver" | "client";
+      };
 
-      // For now, using query params (replace with JWT)
-      socket.userId = socket.handshake.query.userId as string;
-      socket.userType = socket.handshake.query.userType as "driver" | "client";
-
+      socket.userId = decoded.driverId;
+      socket.userType = decoded.userType;
       next();
     } catch (err) {
       next(new Error("Authentication failed"));
