@@ -41,19 +41,19 @@ export const verifyOTP: RequestHandler = async (req, res) => {
   }
 
   // Simple: check if driver exists
-  let driver = await DriverModel.findOne({ phone_number: phoneNumber });
+  let driver = await DriverModel.findOne({ phoneNumber: phoneNumber });
   let status: "existing" | "pre-registered" | "new";
 
   // If not, create with phone number only (check pre-reg if needed)
   if (!driver) {
     const preReg = await PreRegDriverModel.findOne({
-      phone_number: phoneNumber,
+      phoneNumber: phoneNumber,
     });
 
     status = preReg ? "pre-registered" : "new";
 
     driver = await DriverModel.create({
-      phone_number: phoneNumber,
+      phoneNumber: phoneNumber,
       ...(preReg && {
         name: preReg.name,
         email: preReg.email,
@@ -67,8 +67,8 @@ export const verifyOTP: RequestHandler = async (req, res) => {
 
   // Generate JWT for the driver
   const token = generateJWT({
-    driverId: driver._id,
-    phoneNumber: driver.phone_number,
+    id: driver._id,
+    phoneNumber: driver.phoneNumber,
     userType: "driver",
   });
 
@@ -78,7 +78,7 @@ export const verifyOTP: RequestHandler = async (req, res) => {
     token,
     driver: {
       id: driver._id,
-      phoneNumber: driver.phone_number,
+      phoneNumber: driver.phoneNumber,
       registrationStep: driver.registrationStep,
       approvalStatus: driver.approvalStatus,
       license: driver.licenseNumber,

@@ -2,7 +2,7 @@ import { model, Schema } from "mongoose";
 
 const driverSchema = new Schema(
   {
-    phone_number: {
+    phoneNumber: {
       type: String,
       required: true,
       unique: true,

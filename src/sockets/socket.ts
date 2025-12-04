@@ -23,6 +23,7 @@ export const initSocket = (server: any) => {
       origin: "*", // or your client URL
       methods: ["GET", "POST"],
     },
+    transports: ["websocket", "polling"], // Add this for better compatibility
   });
 
   // Middleware for authentication
@@ -37,12 +38,12 @@ export const initSocket = (server: any) => {
 
     try {
       const decoded = jwt.verify(token, process.env.JWT_SECRET!) as {
-        driverId: string;
+        id: string;
         phoneNumber: string;
         userType: "driver" | "client";
       };
 
-      socket.userId = decoded.driverId;
+      socket.userId = decoded.id;
       socket.userType = decoded.userType;
       next();
     } catch (err) {
