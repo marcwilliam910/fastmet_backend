@@ -3,9 +3,12 @@ import {
   getDriverLocation,
   handleBookingSocket,
 } from "./handlers/client/booking";
-import { on } from "events";
 import { acceptBooking, driverLocation } from "./handlers/driver/booking";
-import { toggleOnDuty, updateDriverLocation } from "./handlers/driver/duty";
+import {
+  setDriverAvailable,
+  toggleOnDuty,
+  updateDriverLocation,
+} from "./handlers/driver/duty";
 import { SOCKET_ROOMS } from "../constants/socketRooms";
 import jwt from "jsonwebtoken";
 
@@ -66,6 +69,7 @@ export const initSocket = (server: any) => {
       updateDriverLocation(socket);
       acceptBooking(socket, io);
       driverLocation(socket, io);
+      setDriverAvailable(socket);
     }
 
     // Client-specific handlers

@@ -118,18 +118,53 @@ export const updateDriverLocation = (socket: CustomSocket) => {
 };
 
 // Mark driver as unavailable when they accept a booking
-// export const setDriverAvailability = (socket: CustomSocket) => {
-//   const on = withErrorHandling(socket);
+export const setDriverAvailable = (socket: CustomSocket) => {
+  const on = withErrorHandling(socket);
+  on(
+    "setAvailability",
+    async (data: { isAvailable: boolean; bookingId: string }) => {
+      socket.join(SOCKET_ROOMS.AVAILABLE);
+      console.log(`✅ Driver ${socket.userId} joined AVAILABLE room`);
 
-//   on("setAvailability", (data: { isAvailable: boolean }) => {
-//     if (data.isAvailable) {
-//       socket.join(SOCKET_ROOMS.AVAILABLE);
-//       console.log(`✅ Driver ${socket.userId} joined AVAILABLE room`);
-//     } else {
-//       socket.leave(SOCKET_ROOMS.AVAILABLE);
-//       console.log(`❌ Driver ${socket.userId} left AVAILABLE room`);
-//     }
+      await BookingModel.findOneAndUpdate(
+        { _id: data.bookingId },
+        { status: "completed", completedAt: new Date() },
+        { new: true }
+      );
 
-//     socket.emit("availabilityChanged", { isAvailable: data.isAvailable });
-//   });
-// };
+      // ✅ Fetch pending bookings
+      const pendingBookings = await BookingModel.find({
+        status: "pending",
+      }).sort({ createdAt: -1 });
+
+      const location = socket.data.location;
+
+      if (!location) {
+        throw new Error("Location is required when going on duty");
+      }
+
+      // ✅ Filter by location radius
+      const nearbyBookings = pendingBookings.filter((booking) => {
+        const distance = calculateDistance(
+          {
+            lat: booking.pickUp.coords.lat,
+            lng: booking.pickUp.coords.lng,
+          },
+          {
+            lat: location.lat,
+            lng: location.lng,
+          }
+        );
+        return distance <= MAX_DRIVER_RADIUS_KM;
+      });
+
+      console.log(
+        `📦 Found ${nearbyBookings.length} nearby bookings for driver ${socket.userId}`
+      );
+
+      socket.emit("availabilityChanged", {
+        pendingBookings: nearbyBookings,
+      });
+    }
+  );
+};

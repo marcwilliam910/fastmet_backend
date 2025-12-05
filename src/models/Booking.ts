@@ -3,7 +3,10 @@ import { Schema, Document, model } from "mongoose";
 export interface IBooking extends Document {
   userId: string;
   driver: {
-    id: string;
+    id: {
+      type: Schema.Types.ObjectId;
+      ref: "Driver";
+    };
     name: string;
     rating: number;
   } | null;
@@ -45,6 +48,7 @@ export interface IBooking extends Document {
     icon?: string;
   }[];
   status: string; // "pending" | "active" | "cancelled"
+  completedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -55,7 +59,7 @@ const bookingSchema: Schema = new Schema<IBooking>(
     driver: {
       type: new Schema(
         {
-          id: { type: String },
+          id: { type: Schema.Types.ObjectId, ref: "Driver" },
           name: { type: String },
           rating: { type: Number },
         },
@@ -104,6 +108,7 @@ const bookingSchema: Schema = new Schema<IBooking>(
       },
     ],
     status: { type: String, required: true, default: "pending" },
+    completedAt: { type: Date, default: null },
   },
   { timestamps: true }
 );
