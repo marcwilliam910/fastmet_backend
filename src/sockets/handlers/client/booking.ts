@@ -66,15 +66,30 @@ export const handleBookingSocket = (socket: CustomSocket, io: Server) => {
       paymentMethod: booking.paymentMethod,
     };
 
-    // 3. Get available & on-duty drivers
+    // 3. Determine vehicle type from booking
+    const vehicleType = booking.selectedVehicle.id; // e.g., "motorcycle", "car", "truck"
+
+    if (!vehicleType) {
+      socket.emit("booking_request_failed", {
+        message: "Vehicle type not specified in booking",
+      });
+      return;
+    }
+
+    const vehicleRoom = `VEHICLE_${vehicleType.toUpperCase()}`;
+
+    // 4. Get available & on-duty drivers with matching vehicle type
     const availableDriverSockets = await io
       .in(SOCKET_ROOMS.ON_DUTY)
       .in(SOCKET_ROOMS.AVAILABLE)
+      .in(vehicleRoom)
       .fetchSockets();
 
-    console.log(`🔍 Found ${availableDriverSockets.length} available drivers`);
+    console.log(
+      `🔍 Found ${availableDriverSockets.length} available ${vehicleType} drivers`
+    );
 
-    // 4. Location filtering
+    // 5. Location filtering
     const nearbyDrivers = availableDriverSockets.filter((driverSocket: any) => {
       const driverLocation = driverSocket.data.location;
       if (!driverLocation) {
@@ -94,9 +109,9 @@ export const handleBookingSocket = (socket: CustomSocket, io: Server) => {
       );
 
       console.log(
-        `📏 Driver ${driverSocket.data.userId} is ${distance.toFixed(
-          2
-        )} km away`
+        `📏 Driver ${driverSocket.data.userId} (${
+          driverSocket.data.vehicleType
+        }) is ${distance.toFixed(2)} km away`
       );
 
       return distance <= MAX_DRIVER_RADIUS_KM;
@@ -104,30 +119,33 @@ export const handleBookingSocket = (socket: CustomSocket, io: Server) => {
 
     if (nearbyDrivers.length === 0) {
       socket.emit("no_drivers_available", {
-        message: "No drivers available in your area",
+        message: `No ${vehicleType} drivers available in your area`,
       });
       return;
     }
 
     console.log(
-      `🚗 Adding ${nearbyDrivers.length} drivers to ${temporaryRoom}`
+      `🚗 Adding ${nearbyDrivers.length} ${vehicleType} drivers to ${temporaryRoom}`
     );
 
-    // 5. Join nearby drivers to this booking room
+    // 6. Join nearby drivers to this booking room
     nearbyDrivers.forEach((driverSocket) => {
       driverSocket.join(temporaryRoom);
     });
 
-    // 6. Emit booking to room
+    // 7. Emit booking to room
     io.to(temporaryRoom).emit("new_booking_request", driverPayload);
 
     // Notify client
     socket.emit("booking_request_sent", {
       bookingId: booking._id,
       driversNotified: nearbyDrivers.length,
+      vehicleType,
     });
 
-    console.log(`📤 Booking ${booking._id} sent to room ${temporaryRoom}`);
+    console.log(
+      `📤 Booking ${booking._id} sent to ${nearbyDrivers.length} ${vehicleType} drivers in room ${temporaryRoom}`
+    );
   });
 };
 

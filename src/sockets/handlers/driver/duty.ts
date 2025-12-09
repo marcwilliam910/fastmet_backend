@@ -12,29 +12,50 @@ export const toggleOnDuty = (socket: CustomSocket) => {
     async (data: {
       isOnDuty: boolean;
       location?: { lat: number; lng: number };
+      vehicleType?: "motorcycle" | "car" | "suv" | "truck";
     }) => {
-      const { isOnDuty, location } = data;
+      const { isOnDuty, location, vehicleType } = data;
 
       if (isOnDuty) {
         if (!location) {
           throw new Error("Location is required when going on duty");
         }
 
+        if (!vehicleType) {
+          throw new Error("Vehicle type is required when going on duty");
+        }
+
+        // Join general rooms
         socket.join(SOCKET_ROOMS.ON_DUTY);
         socket.join(SOCKET_ROOMS.AVAILABLE);
 
+        // Join vehicle-specific room
+        const vehicleRoom = `VEHICLE_${vehicleType.toUpperCase()}`;
+        socket.join(vehicleRoom);
+
         socket.data.location = location;
+        socket.data.vehicleType = vehicleType;
         socket.data.lastLocationUpdate = new Date();
 
-        console.log(`✅ Driver ${socket.userId} is ON DUTY at`, location);
+        console.log(
+          `✅ Driver ${socket.userId} is ON DUTY at`,
+          location,
+          `with vehicle: ${vehicleType}`
+        );
 
         // ✅ Fetch pending bookings
         const pendingBookings = await BookingModel.find({
           status: "pending",
         }).sort({ createdAt: -1 });
 
-        // ✅ Filter by location radius
+        // ✅ Filter by location radius AND vehicle type
         const nearbyBookings = pendingBookings.filter((booking) => {
+          // Check vehicle type match
+          if (booking.selectedVehicle.id !== vehicleType) {
+            return false;
+          }
+
+          // Check distance
           const distance = calculateDistance(
             {
               lat: booking.pickUp.coords.lat,
@@ -49,7 +70,7 @@ export const toggleOnDuty = (socket: CustomSocket) => {
         });
 
         console.log(
-          `📦 Found ${nearbyBookings.length} nearby bookings for driver ${socket.userId}`
+          `📦 Found ${nearbyBookings.length} nearby bookings for driver ${socket.userId} (${vehicleType})`
         );
 
         socket.emit("dutyStatusChanged", {
@@ -61,8 +82,15 @@ export const toggleOnDuty = (socket: CustomSocket) => {
         socket.leave(SOCKET_ROOMS.ON_DUTY);
         socket.leave(SOCKET_ROOMS.AVAILABLE);
 
+        // Leave vehicle-specific room if it exists
+        if (socket.data.vehicleType) {
+          const vehicleRoom = `VEHICLE_${socket.data.vehicleType.toUpperCase()}`;
+          socket.leave(vehicleRoom);
+        }
+
         // Clear driver data
         delete socket.data.location;
+        delete socket.data.vehicleType;
         delete socket.data.lastLocationUpdate;
 
         console.log(`❌ Driver ${socket.userId} is OFF DUTY`);
@@ -85,6 +113,7 @@ export const updateDriverLocation = (socket: CustomSocket) => {
 
       socket.data.location = location;
       socket.data.lastLocationUpdate = new Date();
+      const vehicleType = socket.data.vehicleType;
 
       // ✅ Fetch pending bookings
       const pendingBookings = await BookingModel.find({
@@ -93,6 +122,9 @@ export const updateDriverLocation = (socket: CustomSocket) => {
 
       // ✅ Filter by NEW location radius
       const nearbyBookings = pendingBookings.filter((booking) => {
+        if (booking.selectedVehicle.id !== vehicleType) {
+          return false;
+        }
         const distance = calculateDistance(
           {
             lat: booking.pickUp.coords.lat,
@@ -137,6 +169,7 @@ export const setDriverAvailable = (socket: CustomSocket) => {
       }).sort({ createdAt: -1 });
 
       const location = socket.data.location;
+      const vehicleType = socket.data.vehicleType;
 
       if (!location) {
         throw new Error("Location is required when going on duty");
@@ -144,6 +177,10 @@ export const setDriverAvailable = (socket: CustomSocket) => {
 
       // ✅ Filter by location radius
       const nearbyBookings = pendingBookings.filter((booking) => {
+        if (booking.selectedVehicle.id !== vehicleType) {
+          return false;
+        }
+
         const distance = calculateDistance(
           {
             lat: booking.pickUp.coords.lat,
