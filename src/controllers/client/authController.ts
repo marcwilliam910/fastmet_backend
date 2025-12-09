@@ -21,8 +21,6 @@ export const sendOTP: RequestHandler = async (req, res) => {
 export const verifyOTP: RequestHandler = async (req, res) => {
   const { phoneNumber, otpCode: otp } = req.body;
 
-  console.log(otp, phoneNumber);
-
   if (!phoneNumber || !otp) {
     return res.status(400).json({
       error: "Phone number and OTP are required",

@@ -2,7 +2,7 @@ import { Server, Socket } from "socket.io";
 import { CustomSocket } from "../../socket";
 import BookingModel from "../../../models/Booking";
 import { withErrorHandling } from "../../../utils/socketWrapper";
-import { SOCKET_ROOMS } from "../../../constants/socketRooms";
+import { SOCKET_ROOMS } from "../../../utils/constants";
 
 export const acceptBooking = (socket: CustomSocket, io: Server) => {
   const on = withErrorHandling(socket);

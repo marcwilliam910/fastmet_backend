@@ -2,9 +2,8 @@ import { Socket, Server } from "socket.io";
 import BookingModel from "../../../models/Booking";
 import { withErrorHandling } from "../../../utils/socketWrapper";
 import { CustomSocket } from "../../socket";
-import { SOCKET_ROOMS } from "../../../constants/socketRooms";
 import { calculateDistance } from "../../../utils/distanceCalculator";
-import { MAX_DRIVER_RADIUS_KM } from "../../../utils/constants";
+import { MAX_DRIVER_RADIUS_KM, SOCKET_ROOMS } from "../../../utils/constants";
 
 // export const handleBookingSocket = (socket: Socket, io: Server) => {
 //   socket.on("request_booking", async (data) => {

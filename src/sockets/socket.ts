@@ -9,8 +9,8 @@ import {
   toggleOnDuty,
   updateDriverLocation,
 } from "./handlers/driver/duty";
-import { SOCKET_ROOMS } from "../constants/socketRooms";
 import jwt from "jsonwebtoken";
+import { SOCKET_ROOMS } from "../utils/constants";
 
 // Extend Socket type to include custom properties
 export interface CustomSocket extends Socket {
@@ -79,7 +79,7 @@ export const initSocket = (server: any) => {
     }
 
     socket.on("disconnect", () => {
-      console.log(`Client disconnected: ${socket.id}`);
+      console.log(`User disconnected: ${socket.id}`);
     });
   });
 

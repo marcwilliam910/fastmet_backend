@@ -1,9 +1,8 @@
 import { withErrorHandling } from "../../../utils/socketWrapper";
-import { SOCKET_ROOMS } from "../../../constants/socketRooms";
 import { CustomSocket } from "../../socket";
 import BookingModel from "../../../models/Booking";
 import { calculateDistance } from "../../../utils/distanceCalculator";
-import { MAX_DRIVER_RADIUS_KM } from "../../../utils/constants";
+import { MAX_DRIVER_RADIUS_KM, SOCKET_ROOMS } from "../../../utils/constants";
 
 export const toggleOnDuty = (socket: CustomSocket) => {
   const on = withErrorHandling(socket);
