@@ -1,7 +1,7 @@
 import { Schema, Document, model } from "mongoose";
 
 export interface IBooking extends Document {
-  userId: string;
+  customerId: Schema.Types.ObjectId;
   bookingRef: string;
   driver: {
     id: {
@@ -56,7 +56,11 @@ export interface IBooking extends Document {
 
 const bookingSchema: Schema = new Schema<IBooking>(
   {
-    userId: { type: String, required: true },
+    customerId: {
+      type: Schema.Types.ObjectId,
+      required: true,
+      ref: "New_User",
+    },
     bookingRef: { type: String, required: true, unique: true },
     driver: {
       type: new Schema(

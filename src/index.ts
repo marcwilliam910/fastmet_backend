@@ -5,12 +5,17 @@ import dotenv from "dotenv";
 import mongoose from "mongoose";
 import { errorHandler } from "./middlewares/errorHandler";
 import { initSocket } from "./sockets/socket";
+// client routes
 import bookingRoute from "./routes/client/bookingRoute";
-import driverBookingRoute from "./routes/driver/bookingRoute";
 import userRoute from "./routes/client/userRoute";
-import authDriverRoute from "./routes/driver/authRoute";
 import authClientRoute from "./routes/client/authRoute";
+import conversationClientRoute from "./routes/client/conversationRoute";
+// driver routes
+import driverBookingRoute from "./routes/driver/bookingRoute";
+import authDriverRoute from "./routes/driver/authRoute";
+import conversationDriverRoute from "./routes/driver/conversationRoute";
 import profileDriverRoute from "./routes/driver/profileRoute";
+
 import { authenticateJWT } from "./middlewares/verifyToken";
 
 dotenv.config();
@@ -31,10 +36,12 @@ app.use(express.urlencoded({ extended: true }));
 app.use("/api/client/auth", authClientRoute);
 app.use("/api/client/user", userRoute);
 app.use("/api/client/booking", authenticateJWT, bookingRoute);
+app.use("/api/client/message", authenticateJWT, conversationClientRoute);
 
 app.use("/api/driver/auth", authDriverRoute);
 app.use("/api/driver/booking", authenticateJWT, driverBookingRoute);
 app.use("/api/driver/profile", authenticateJWT, profileDriverRoute);
+app.use("/api/driver/message", authenticateJWT, conversationDriverRoute);
 
 const server = http.createServer(app);
 

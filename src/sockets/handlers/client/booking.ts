@@ -4,6 +4,7 @@ import { withErrorHandling } from "../../../utils/socketWrapper";
 import { CustomSocket } from "../../socket";
 import { calculateDistance } from "../../../utils/distanceCalculator";
 import { MAX_DRIVER_RADIUS_KM, SOCKET_ROOMS } from "../../../utils/constants";
+import NewUserModel from "../../../models/NewUser";
 
 // export const handleBookingSocket = (socket: Socket, io: Server) => {
 //   socket.on("request_booking", async (data) => {
@@ -49,13 +50,30 @@ export const handleBookingSocket = (socket: CustomSocket, io: Server) => {
       status: "pending",
     });
 
+    const client = await NewUserModel.findById(booking.customerId)
+      .select("name profilePictureUrl phoneNumber email")
+      .lean();
+
+    if (!client) {
+      socket.emit("booking_request_saved", {
+        success: false,
+        error: "Client not found",
+      });
+      return;
+    }
+
     const temporaryRoom = `BOOKING_${booking._id}`;
 
     // Confirm booking was saved
     socket.emit("booking_request_saved", { success: true });
-
     // 2. Payload
     const driverPayload = {
+      client: {
+        id: client._id,
+        name: client.fullName,
+        profilePictureUrl: client.profilePictureUrl,
+        phoneNumber: client.phoneNumber,
+      },
       bookingId: booking._id,
       pickUp: booking.pickUp,
       dropOff: booking.dropOff,

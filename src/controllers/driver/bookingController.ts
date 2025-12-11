@@ -4,11 +4,34 @@ import mongoose from "mongoose";
 
 export const getActiveBooking: RequestHandler = async (req, res) => {
   const { driverId } = req.params;
+
   const activeBooking = await BookingModel.findOne({
     status: "active",
     "driver.id": new mongoose.Types.ObjectId(driverId),
-  });
-  res.status(200).json(activeBooking);
+  })
+    .populate({
+      path: "customerId", // field that references User model
+      select: "fullName profilePictureUrl phoneNumber", // select needed fields
+    })
+    .lean(); // .lean() for plain JS object (optional, for better performance)
+
+  if (!activeBooking) {
+    return res.status(404).json({ message: "No active booking found" });
+  }
+
+  // Rename userId to client
+  const { customerId, ...rest } = activeBooking as any;
+  const formattedBooking = {
+    ...rest,
+    client: {
+      id: customerId._id,
+      name: customerId.fullName,
+      profilePictureUrl: customerId.profilePictureUrl,
+      phoneNumber: customerId.phoneNumber,
+    },
+  };
+
+  res.status(200).json(formattedBooking);
 };
 
 export const getCompletedBookings: RequestHandler = async (req, res) => {
@@ -34,7 +57,7 @@ export const getCompletedBookings: RequestHandler = async (req, res) => {
 
   // Get total count to know if there are more pages
   const total = await BookingModel.countDocuments({
-    "driver.id": driverId,
+    "driver.id": new mongoose.Types.ObjectId(driverId),
     status: "completed",
   });
 

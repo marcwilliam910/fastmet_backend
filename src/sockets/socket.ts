@@ -11,6 +11,7 @@ import {
 } from "./handlers/driver/duty";
 import jwt from "jsonwebtoken";
 import { SOCKET_ROOMS } from "../utils/constants";
+import { chatHandler } from "./handlers/chat";
 
 // Extend Socket type to include custom properties
 export interface CustomSocket extends Socket {
@@ -63,6 +64,8 @@ export const initSocket = (server: any) => {
     // Join user's personal room (for targeted emissions)
     socket.join(socket.userId);
 
+    chatHandler(socket, io);
+
     // Driver-specific handlers
     if (socket.userType === "driver") {
       toggleOnDuty(socket);
@@ -84,13 +87,13 @@ export const initSocket = (server: any) => {
   });
 
   // ✅ Log stats periodically
-  setInterval(async () => {
-    const onDutySockets = await io.in(SOCKET_ROOMS.ON_DUTY).fetchSockets();
-    const availableSockets = await io.in(SOCKET_ROOMS.AVAILABLE).fetchSockets();
+  // setInterval(async () => {
+  //   const onDutySockets = await io.in(SOCKET_ROOMS.ON_DUTY).fetchSockets();
+  //   const availableSockets = await io.in(SOCKET_ROOMS.AVAILABLE).fetchSockets();
 
-    console.log(`📊 On-duty drivers: ${onDutySockets.length}`);
-    console.log(`📊 Available drivers: ${availableSockets.length}`);
-  }, 30000); // Every 30 seconds
+  //   console.log(`📊 On-duty drivers: ${onDutySockets.length}`);
+  //   console.log(`📊 Available drivers: ${availableSockets.length}`);
+  // }, 30000); // Every 30 seconds
 
   return io;
 };

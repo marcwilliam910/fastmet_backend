@@ -17,8 +17,7 @@ export const authenticateJWT = (
   try {
     const secret = process.env.JWT_SECRET!;
     const decoded = jwt.verify(token, secret) as {
-      driverId?: string;
-      clientId?: string;
+      id: string;
       phoneNumber: string;
       userType: "driver" | "client";
     };

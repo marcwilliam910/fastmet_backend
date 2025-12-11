@@ -1,4 +1,4 @@
-import { Server, Socket } from "socket.io";
+import { Server } from "socket.io";
 import { CustomSocket } from "../../socket";
 import BookingModel from "../../../models/Booking";
 import { withErrorHandling } from "../../../utils/socketWrapper";
@@ -44,8 +44,8 @@ export const acceptBooking = (socket: CustomSocket, io: Server) => {
       socket.leave(SOCKET_ROOMS.AVAILABLE);
 
       // Notify the client who booked
-      io.to(booking.userId).emit("bookingAccepted", {
-        userId: booking.userId,
+      io.to(booking.customerId.toString()).emit("bookingAccepted", {
+        customerId: booking.customerId,
       });
 
       // Confirm to driver
@@ -79,7 +79,9 @@ export const completeBooking = (socket: CustomSocket) => {
     socket.join(SOCKET_ROOMS.AVAILABLE);
 
     // Notify client
-    socket.to(booking.userId).emit("bookingCompleted", { bookingId });
+    socket
+      .to(booking.customerId.toString())
+      .emit("bookingCompleted", { bookingId });
 
     socket.emit("completionConfirmed", { bookingId });
 

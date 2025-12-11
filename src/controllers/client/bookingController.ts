@@ -1,6 +1,6 @@
 import { RequestHandler } from "express";
 import BookingModel from "../../models/Booking";
-import { Types } from "mongoose";
+import mongoose, { Types } from "mongoose";
 
 export const getBookingsByStatus: RequestHandler = async (req, res) => {
   const { userId } = req.params;
@@ -13,13 +13,19 @@ export const getBookingsByStatus: RequestHandler = async (req, res) => {
   const pageNum = Number(page);
   const limitNum = Number(limit);
 
-  const bookings = await BookingModel.find({ userId, status })
+  const bookings = await BookingModel.find({
+    customerId: new mongoose.Types.ObjectId(userId),
+    status,
+  })
     .sort({ createdAt: -1 })
     .skip((pageNum - 1) * limitNum)
     .limit(limitNum);
 
   // Get total count to know if there are more pages
-  const total = await BookingModel.countDocuments({ userId, status });
+  const total = await BookingModel.countDocuments({
+    customerId: new mongoose.Types.ObjectId(userId),
+    status,
+  });
 
   res.status(200).json({
     bookings,
@@ -52,7 +58,7 @@ export const getBookingsCount: RequestHandler = async (req, res) => {
   }
 
   const result = await BookingModel.aggregate([
-    { $match: { userId } },
+    { $match: { customerId: new mongoose.Types.ObjectId(userId) } },
     {
       $group: {
         _id: "$status",

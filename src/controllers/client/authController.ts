@@ -64,6 +64,8 @@ export const verifyOTP: RequestHandler = async (req, res) => {
     client: {
       id: user._id,
       isProfileComplete: user.isProfileComplete,
+      fullName: user.fullName,
+      profilePictureUrl: user.profilePictureUrl,
     },
   });
 };

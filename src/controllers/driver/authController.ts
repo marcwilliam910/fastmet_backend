@@ -82,6 +82,7 @@ export const verifyOTP: RequestHandler = async (req, res) => {
       registrationStep: driver.registrationStep,
       approvalStatus: driver.approvalStatus,
       license: driver.licenseNumber,
+      rating: driver.rating,
       ...(driver.name && { name: driver.name }),
       ...(driver.email && { email: driver.email }),
       ...(driver.vehicle && { vehicle: driver.vehicle }),
