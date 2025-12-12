@@ -4,6 +4,7 @@ import { withErrorHandling } from "../../utils/socketWrapper";
 import ConversationModel from "../../models/Conversation";
 import MessageModel from "../../models/Message";
 import { createConversationId, getUnreadCount } from "../../utils/helper";
+import cloudinary from "../../config/cloudinary";
 
 export function chatHandler(socket: CustomSocket, io: Server) {
   const on = withErrorHandling(socket);
@@ -33,15 +34,18 @@ export function chatHandler(socket: CustomSocket, io: Server) {
     });
   });
   // GET MESSAGE HISTORY
-  on("get_messages", async ({ conversationId, limit = 50 }) => {
+  on("get_messages", async ({ conversationId, limit = 20, skip = 0 }) => {
     const messages = await MessageModel.find({ conversationId })
       .sort({ createdAt: -1 })
+      .skip(skip)
       .limit(limit)
       .lean();
 
     socket.emit("messages_loaded", {
       conversationId,
       messages,
+      skip,
+      hasMore: messages.length === limit, // frontend decides if more exists
     });
   });
 
@@ -55,6 +59,37 @@ export function chatHandler(socket: CustomSocket, io: Server) {
     }
 
     const senderType = socket.userType;
+    let imageUrl = null;
+    // Upload image to Cloudinary if provided
+    if (image) {
+      try {
+        // Extract base64 data from the image URI (if it's data URI)
+        const base64Data = image.replace(/^data:image\/\w+;base64,/, "");
+        const buffer = Buffer.from(base64Data, "base64");
+
+        // Upload to Cloudinary
+        const result = await new Promise<any>((resolve, reject) => {
+          const stream = cloudinary.uploader.upload_stream(
+            {
+              folder: `fastmet/chat/${conversationId}`,
+              resource_type: "image",
+            },
+            (error, result) => {
+              if (error || !result) reject(error);
+              else resolve(result);
+            }
+          );
+
+          stream.end(buffer);
+        });
+
+        imageUrl = result.secure_url;
+      } catch (error) {
+        console.error("Image upload failed:", error);
+        socket.emit("message_error", { error: "Image upload failed" });
+        return;
+      }
+    }
 
     // Save message to DB
     const savedMessage = await MessageModel.create({
@@ -62,7 +97,7 @@ export function chatHandler(socket: CustomSocket, io: Server) {
       senderId,
       senderType,
       text,
-      image,
+      image: imageUrl,
     });
 
     // Determine other user type and ID

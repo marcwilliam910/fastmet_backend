@@ -28,6 +28,12 @@ export const initSocket = (server: any) => {
       methods: ["GET", "POST"],
     },
     transports: ["websocket", "polling"], // Add this for better compatibility
+    // connectionStateRecovery: {
+    //   maxDisconnectionDuration: 2 * 60 * 1000, // 2 minutes
+    //   skipMiddlewares: false,
+    // },
+    // pingInterval: 60000,
+    // pingTimeout: 5000,
   });
 
   // Middleware for authentication
