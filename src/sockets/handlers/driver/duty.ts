@@ -3,6 +3,7 @@ import { CustomSocket } from "../../socket";
 import BookingModel from "../../../models/Booking";
 import { calculateDistance } from "../../../utils/distanceCalculator";
 import { MAX_DRIVER_RADIUS_KM, SOCKET_ROOMS } from "../../../utils/constants";
+import mongoose from "mongoose";
 
 export const toggleOnDuty = (socket: CustomSocket) => {
   const on = withErrorHandling(socket);
@@ -73,9 +74,32 @@ export const toggleOnDuty = (socket: CustomSocket) => {
           `📦 Found ${nearbyBookings.length} nearby bookings for driver ${socket.userId} (${vehicleType})`
         );
 
+        const activeBooking = await BookingModel.findOne({
+          status: "active",
+          "driver.id": new mongoose.Types.ObjectId(socket.userId),
+        })
+          .populate({
+            path: "customerId",
+            select: "fullName profilePictureUrl phoneNumber",
+          })
+          .lean();
+
+        // Rename userId to client
+        const { customerId, ...rest } = activeBooking as any;
+        const formattedBooking = {
+          ...rest,
+          client: {
+            id: customerId._id,
+            name: customerId.fullName,
+            profilePictureUrl: customerId.profilePictureUrl,
+            phoneNumber: customerId.phoneNumber,
+          },
+        };
+
         socket.emit("dutyStatusChanged", {
           isOnDuty: true,
           pendingBookings: nearbyBookings,
+          activeBooking: formattedBooking,
         });
       } else {
         // Leave all driver rooms

@@ -1,10 +1,11 @@
 import { RequestHandler } from "express";
 import BookingModel from "../../models/Booking";
 import mongoose from "mongoose";
+import { getUserId } from "../../utils/getUserId";
 
+// not used currently
 export const getActiveBooking: RequestHandler = async (req, res) => {
-  const { driverId } = req.params;
-
+  const driverId = getUserId(req);
   const activeBooking = await BookingModel.findOne({
     status: "active",
     "driver.id": new mongoose.Types.ObjectId(driverId),
@@ -35,7 +36,7 @@ export const getActiveBooking: RequestHandler = async (req, res) => {
 };
 
 export const getCompletedBookings: RequestHandler = async (req, res) => {
-  const { driverId } = req.params;
+  const driverId = getUserId(req);
   const { page = 1, limit = 5 } = req.query;
 
   if (!driverId) {
@@ -64,5 +65,31 @@ export const getCompletedBookings: RequestHandler = async (req, res) => {
   res.status(200).json({
     bookings,
     nextPage: pageNum * limitNum < total ? pageNum + 1 : null,
+  });
+};
+
+export const getTotalCompletedAndScheduledBookings: RequestHandler = async (
+  req,
+  res
+) => {
+  const driverId = getUserId(req);
+
+  if (!driverId) {
+    return res.status(400).json({ message: "Missing user ID" });
+  }
+
+  const totalCompletedBookings = await BookingModel.countDocuments({
+    "driver.id": new mongoose.Types.ObjectId(driverId),
+    status: "completed",
+  });
+
+  const totalScheduledBookings = await BookingModel.countDocuments({
+    "driver.id": new mongoose.Types.ObjectId(driverId),
+    status: "scheduled",
+  });
+
+  res.status(200).json({
+    totalCompletedBookings,
+    totalScheduledBookings,
   });
 };
