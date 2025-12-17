@@ -1,5 +1,5 @@
 import { RequestHandler } from "express";
-import { generateJWT } from "../../utils/jwt";
+import { generateJWT } from "../../utils/helpers/jwt";
 import NewUserModel from "../../models/NewUser";
 
 export const sendOTP: RequestHandler = async (req, res) => {

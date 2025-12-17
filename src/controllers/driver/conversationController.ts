@@ -1,7 +1,7 @@
 import { RequestHandler } from "express";
 import mongoose from "mongoose";
 import ConversationModel from "../../models/Conversation";
-import { getUserId } from "../../utils/getUserId";
+import { getUserId } from "../../utils/helpers/getUserId";
 
 export const getConversations: RequestHandler = async (req, res) => {
   const driverId = getUserId(req);
@@ -21,10 +21,10 @@ export const getConversations: RequestHandler = async (req, res) => {
     .skip((pageNum - 1) * limitNum)
     .limit(limitNum)
     .populate({
-      path: "client", // field that references User model
-      select: "fullName profilePictureUrl phoneNumber", // select needed fields
+      path: "client",
+      select: "fullName profilePictureUrl phoneNumber",
     })
-    .lean(); // .lean() for plain JS object (optional, for better performance)
+    .lean();
 
   // Get total count to know if there are more pages
   const total = await ConversationModel.countDocuments({

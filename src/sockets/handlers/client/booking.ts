@@ -2,7 +2,7 @@ import { Socket, Server } from "socket.io";
 import BookingModel from "../../../models/Booking";
 import { withErrorHandling } from "../../../utils/socketWrapper";
 import { CustomSocket } from "../../socket";
-import { calculateDistance } from "../../../utils/distanceCalculator";
+import { calculateDistance } from "../../../utils/helpers/distanceCalculator";
 import { MAX_DRIVER_RADIUS_KM, SOCKET_ROOMS } from "../../../utils/constants";
 import NewUserModel from "../../../models/NewUser";
 

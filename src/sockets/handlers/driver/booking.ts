@@ -3,6 +3,7 @@ import { CustomSocket } from "../../socket";
 import BookingModel from "../../../models/Booking";
 import { withErrorHandling } from "../../../utils/socketWrapper";
 import { SOCKET_ROOMS } from "../../../utils/constants";
+import { canAcceptScheduledBooking } from "../../../utils/helpers/scheduleFeasibility";
 
 export const acceptBooking = (socket: CustomSocket, io: Server) => {
   const on = withErrorHandling(socket);
@@ -12,13 +13,29 @@ export const acceptBooking = (socket: CustomSocket, io: Server) => {
     async ({
       bookingId,
       driverData,
+      type,
     }: {
       bookingId: string;
       driverData: { id: string; name: string; rating: number };
+      type: "asap" | "schedule" | "pooling";
     }) => {
       if (!bookingId) throw new Error("bookingId is required");
       if (!driverData.id || !driverData.name || driverData.rating == null) {
         throw new Error("Invalid driver data");
+      }
+
+      if (type === "schedule") {
+        const result = await canAcceptScheduledBooking(
+          bookingId,
+          driverData.id
+        );
+
+        if (!result.ok) {
+          socket.emit("acceptBookingError", {
+            message: result.reason,
+          });
+          return;
+        }
       }
 
       const booking = await BookingModel.findOneAndUpdate(
@@ -26,7 +43,7 @@ export const acceptBooking = (socket: CustomSocket, io: Server) => {
 
         {
           driver: driverData,
-          status: "active",
+          status: type === "asap" ? "active" : "scheduled",
         },
         { new: true }
       );
@@ -40,8 +57,13 @@ export const acceptBooking = (socket: CustomSocket, io: Server) => {
 
       const room = `BOOKING_${bookingId}`;
 
-      // ✅ Mark driver as unavailable (on a trip now)
-      socket.leave(SOCKET_ROOMS.AVAILABLE);
+      // ✅ Mark driver as unavailable if they accepted an ASAP booking (on a trip now)
+      if (type === "asap") {
+        socket.leave(SOCKET_ROOMS.AVAILABLE);
+        console.log(
+          `✅ Driver ${socket.userId} accepted booking ${bookingId} and is now UNAVAILABLE`
+        );
+      }
 
       // Notify the client who booked
       io.to(booking.customerId.toString()).emit("bookingAccepted", {
@@ -49,47 +71,43 @@ export const acceptBooking = (socket: CustomSocket, io: Server) => {
       });
 
       // Confirm to driver
-      socket.emit("acceptanceConfirmed", { bookingId });
+      socket.emit("acceptanceConfirmed", { bookingId, bookingType: type });
 
       // Notify other drivers this booking is taken
       io.to(room).emit("bookingTaken", { bookingId });
-
-      console.log(
-        `✅ Driver ${socket.userId} accepted booking ${bookingId} and is now UNAVAILABLE`
-      );
 
       io.in(room).socketsLeave(room);
     }
   );
 };
 
-export const completeBooking = (socket: CustomSocket) => {
-  const on = withErrorHandling(socket);
+// export const completeBooking = (socket: CustomSocket) => {
+//   const on = withErrorHandling(socket);
 
-  on("completeBooking", async ({ bookingId }: { bookingId: string }) => {
-    const booking = await BookingModel.findByIdAndUpdate(
-      bookingId,
-      { status: "completed" },
-      { new: true }
-    );
+//   on("completeBooking", async ({ bookingId }: { bookingId: string }) => {
+//     const booking = await BookingModel.findByIdAndUpdate(
+//       bookingId,
+//       { status: "completed" },
+//       { new: true }
+//     );
 
-    if (!booking) throw new Error("Booking not found");
+//     if (!booking) throw new Error("Booking not found");
 
-    // ✅ Mark driver as available again
-    socket.join(SOCKET_ROOMS.AVAILABLE);
+//     // ✅ Mark driver as available again
+//     socket.join(SOCKET_ROOMS.AVAILABLE);
 
-    // Notify client
-    socket
-      .to(booking.customerId.toString())
-      .emit("bookingCompleted", { bookingId });
+//     // Notify client
+//     socket
+//       .to(booking.customerId.toString())
+//       .emit("bookingCompleted", { bookingId });
 
-    socket.emit("completionConfirmed", { bookingId });
+//     socket.emit("completionConfirmed", { bookingId });
 
-    console.log(
-      `✅ Booking ${bookingId} completed, driver ${socket.userId} is AVAILABLE again`
-    );
-  });
-};
+//     console.log(
+//       `✅ Booking ${bookingId} completed, driver ${socket.userId} is AVAILABLE again`
+//     );
+//   });
+// };
 
 export const driverLocation = (socket: CustomSocket, io: Server) => {
   socket.on(

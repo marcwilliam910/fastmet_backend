@@ -29,7 +29,7 @@ export interface IBooking extends Document {
   };
   bookingType: {
     type: string; // "asap" | "schedule"
-    value: string | Date | null;
+    value: string | Date;
   };
   selectedVehicle: {
     id: string;

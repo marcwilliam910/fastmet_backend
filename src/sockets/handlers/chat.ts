@@ -3,8 +3,8 @@ import { CustomSocket } from "../socket";
 import { withErrorHandling } from "../../utils/socketWrapper";
 import ConversationModel from "../../models/Conversation";
 import MessageModel from "../../models/Message";
-import { createConversationId, getUnreadCount } from "../../utils/helper";
 import cloudinary from "../../config/cloudinary";
+import { createConversationId } from "../../utils/helpers/createConversationId";
 
 export function chatHandler(socket: CustomSocket, io: Server) {
   const on = withErrorHandling(socket);
@@ -108,6 +108,7 @@ export function chatHandler(socket: CustomSocket, io: Server) {
       $set: {
         lastMessage: text || "Sent an image",
         lastMessageBy: senderType,
+        lastMessageAt: new Date(),
       },
       $inc: {
         [`unreadCount.${otherUserType}`]: 1,

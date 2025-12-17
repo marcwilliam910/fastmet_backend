@@ -1,7 +1,7 @@
 import { RequestHandler } from "express";
 import BookingModel from "../../models/Booking";
 import mongoose from "mongoose";
-import { getUserId } from "../../utils/getUserId";
+import { getUserId } from "../../utils/helpers/getUserId";
 
 // not used currently
 export const getActiveBooking: RequestHandler = async (req, res) => {
@@ -35,12 +35,12 @@ export const getActiveBooking: RequestHandler = async (req, res) => {
   res.status(200).json(formattedBooking);
 };
 
-export const getCompletedBookings: RequestHandler = async (req, res) => {
+export const getBookings: RequestHandler = async (req, res) => {
   const driverId = getUserId(req);
-  const { page = 1, limit = 5 } = req.query;
+  const { page = 1, limit = 5, status } = req.query;
 
-  if (!driverId) {
-    return res.status(400).json({ message: "Missing user ID" });
+  if (!driverId || !status) {
+    return res.status(400).json({ message: "Missing user ID or status" });
   }
 
   const pageNum = Number(page);
@@ -48,18 +48,16 @@ export const getCompletedBookings: RequestHandler = async (req, res) => {
 
   const bookings = await BookingModel.find({
     "driver.id": new mongoose.Types.ObjectId(driverId),
-    status: "completed",
+    status: status,
   })
     .sort({ completedAt: -1 })
     .skip((pageNum - 1) * limitNum)
     .limit(limitNum);
 
-  console.log(bookings);
-
   // Get total count to know if there are more pages
   const total = await BookingModel.countDocuments({
     "driver.id": new mongoose.Types.ObjectId(driverId),
-    status: "completed",
+    status: status,
   });
 
   res.status(200).json({

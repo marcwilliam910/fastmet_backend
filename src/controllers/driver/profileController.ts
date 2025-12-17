@@ -3,7 +3,7 @@ import DriverModel from "../../models/Driver";
 import cloudinary from "../../config/cloudinary";
 import multer from "multer";
 import Driver from "../../models/Driver";
-import { getUserId } from "../../utils/getUserId";
+import { getUserId } from "../../utils/helpers/getUserId";
 
 export const updateDriverProfile: RequestHandler = async (req, res) => {
   const driverId = getUserId(req);

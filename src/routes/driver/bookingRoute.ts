@@ -2,14 +2,16 @@ import { Router } from "express";
 
 import {
   getActiveBooking,
-  getCompletedBookings,
+  getBookings,
   getTotalCompletedAndScheduledBookings,
 } from "../../controllers/driver/bookingController";
 
 const router = Router();
 
-router.get("/active/", getActiveBooking);
-router.get("/completed/", getCompletedBookings);
+// not used currently
+router.get("/active", getActiveBooking);
+
+router.get("/by-status", getBookings);
 router.get("/total", getTotalCompletedAndScheduledBookings);
 
 export default router;

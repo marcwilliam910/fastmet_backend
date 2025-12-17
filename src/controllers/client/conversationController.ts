@@ -1,7 +1,7 @@
 import { RequestHandler } from "express";
 import mongoose from "mongoose";
 import ConversationModel from "../../models/Conversation";
-import { getUserId } from "../../utils/getUserId";
+import { getUserId } from "../../utils/helpers/getUserId";
 
 export const getConversations: RequestHandler = async (req, res) => {
   const clientId = getUserId(req);

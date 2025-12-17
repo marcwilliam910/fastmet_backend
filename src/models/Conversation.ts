@@ -15,6 +15,7 @@ const ConversationSchema = new mongoose.Schema(
     },
     lastMessage: { type: String },
     lastMessageBy: { type: String, enum: ["client", "driver"] }, // "client" or "driver"
+    lastMessageAt: { type: Date },
     unreadCount: {
       client: { type: Number, default: 0 },
       driver: { type: Number, default: 0 },

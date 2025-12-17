@@ -1,7 +1,7 @@
 import { RequestHandler } from "express";
 import DriverModel from "../../models/Driver";
 import { PreRegDriverModel } from "../../models/PreRegDriver";
-import { generateJWT } from "../../utils/jwt";
+import { generateJWT } from "../../utils/helpers/jwt";
 
 export const sendOTP: RequestHandler = async (req, res) => {
   const { phoneNumber } = req.body;

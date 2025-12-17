@@ -1,7 +1,7 @@
 import { withErrorHandling } from "../../../utils/socketWrapper";
 import { CustomSocket } from "../../socket";
 import BookingModel from "../../../models/Booking";
-import { calculateDistance } from "../../../utils/distanceCalculator";
+import { calculateDistance } from "../../../utils/helpers/distanceCalculator";
 import { MAX_DRIVER_RADIUS_KM, SOCKET_ROOMS } from "../../../utils/constants";
 import mongoose from "mongoose";
 
@@ -83,18 +83,20 @@ export const toggleOnDuty = (socket: CustomSocket) => {
             select: "fullName profilePictureUrl phoneNumber",
           })
           .lean();
-
-        // Rename userId to client
-        const { customerId, ...rest } = activeBooking as any;
-        const formattedBooking = {
-          ...rest,
-          client: {
-            id: customerId._id,
-            name: customerId.fullName,
-            profilePictureUrl: customerId.profilePictureUrl,
-            phoneNumber: customerId.phoneNumber,
-          },
-        };
+        let formattedBooking = null;
+        if (activeBooking) {
+          // Rename userId to client
+          const { customerId, ...rest } = activeBooking as any;
+          formattedBooking = {
+            ...rest,
+            client: {
+              id: customerId._id,
+              name: customerId.fullName,
+              profilePictureUrl: customerId.profilePictureUrl,
+              phoneNumber: customerId.phoneNumber,
+            },
+          };
+        }
 
         socket.emit("dutyStatusChanged", {
           isOnDuty: true,
@@ -126,50 +128,49 @@ export const toggleOnDuty = (socket: CustomSocket) => {
 
 // Update driver location periodically
 export const updateDriverLocation = (socket: CustomSocket) => {
-  socket.on(
-    "updateLocation",
-    async (location: { lat: number; lng: number }) => {
-      // ✅ Check room membership instead of socket.data
-      if (!socket.rooms.has(SOCKET_ROOMS.ON_DUTY)) {
-        socket.emit("error", { message: "Driver must be on duty" });
-        return;
-      }
+  const on = withErrorHandling(socket);
 
-      socket.data.location = location;
-      socket.data.lastLocationUpdate = new Date();
-      const vehicleType = socket.data.vehicleType;
-
-      // ✅ Fetch pending bookings
-      const pendingBookings = await BookingModel.find({
-        status: "pending",
-      }).sort({ createdAt: -1 });
-
-      // ✅ Filter by NEW location radius
-      const nearbyBookings = pendingBookings.filter((booking) => {
-        if (booking.selectedVehicle.id !== vehicleType) {
-          return false;
-        }
-        const distance = calculateDistance(
-          {
-            lat: booking.pickUp.coords.lat,
-            lng: booking.pickUp.coords.lng,
-          },
-          {
-            lat: location.lat,
-            lng: location.lng,
-          }
-        );
-        return distance <= MAX_DRIVER_RADIUS_KM;
-      });
-
-      console.log(
-        `📦 Driver ${socket.userId} now has ${nearbyBookings.length} nearby bookings`
-      );
-
-      // ✅ Send updated bookings list
-      socket.emit("pendingBookingsUpdated", { bookings: nearbyBookings });
+  on("updateLocation", async (location: { lat: number; lng: number }) => {
+    // ✅ Check room membership instead of socket.data
+    if (!socket.rooms.has(SOCKET_ROOMS.ON_DUTY)) {
+      socket.emit("error", { message: "Driver must be on duty" });
+      return;
     }
-  );
+
+    socket.data.location = location;
+    socket.data.lastLocationUpdate = new Date();
+    const vehicleType = socket.data.vehicleType;
+
+    // ✅ Fetch pending bookings
+    const pendingBookings = await BookingModel.find({
+      status: "pending",
+    }).sort({ createdAt: -1 });
+
+    // ✅ Filter by NEW location radius
+    const nearbyBookings = pendingBookings.filter((booking) => {
+      if (booking.selectedVehicle.id !== vehicleType) {
+        return false;
+      }
+      const distance = calculateDistance(
+        {
+          lat: booking.pickUp.coords.lat,
+          lng: booking.pickUp.coords.lng,
+        },
+        {
+          lat: location.lat,
+          lng: location.lng,
+        }
+      );
+      return distance <= MAX_DRIVER_RADIUS_KM;
+    });
+
+    console.log(
+      `📦 Driver ${socket.userId} now has ${nearbyBookings.length} nearby bookings`
+    );
+
+    // ✅ Send updated bookings list
+    socket.emit("pendingBookingsUpdated", { bookings: nearbyBookings });
+  });
 };
 
 // Mark driver as unavailable when they accept a booking
