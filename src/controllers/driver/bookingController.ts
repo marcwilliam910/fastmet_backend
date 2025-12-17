@@ -76,6 +76,11 @@ export const getTotalCompletedAndScheduledBookings: RequestHandler = async (
     return res.status(400).json({ message: "Missing user ID" });
   }
 
+  const totalActiveBookings = await BookingModel.countDocuments({
+    "driver.id": new mongoose.Types.ObjectId(driverId),
+    status: "active",
+  });
+
   const totalCompletedBookings = await BookingModel.countDocuments({
     "driver.id": new mongoose.Types.ObjectId(driverId),
     status: "completed",
@@ -87,6 +92,7 @@ export const getTotalCompletedAndScheduledBookings: RequestHandler = async (
   });
 
   res.status(200).json({
+    totalActiveBookings,
     totalCompletedBookings,
     totalScheduledBookings,
   });

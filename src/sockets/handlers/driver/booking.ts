@@ -3,7 +3,10 @@ import { CustomSocket } from "../../socket";
 import BookingModel from "../../../models/Booking";
 import { withErrorHandling } from "../../../utils/socketWrapper";
 import { SOCKET_ROOMS } from "../../../utils/constants";
-import { canAcceptScheduledBooking } from "../../../utils/helpers/scheduleFeasibility";
+import {
+  canAcceptAsapBooking,
+  canAcceptScheduledBooking,
+} from "../../../utils/helpers/bookingFeasibility";
 
 export const acceptBooking = (socket: CustomSocket, io: Server) => {
   const on = withErrorHandling(socket);
@@ -24,11 +27,28 @@ export const acceptBooking = (socket: CustomSocket, io: Server) => {
         throw new Error("Invalid driver data");
       }
 
+      // avoid overlapping scheduled bookings
+      const scheduledBookings = await BookingModel.find({
+        "driver.id": driverData.id,
+        status: "scheduled",
+        "bookingType.type": "schedule",
+      });
+
       if (type === "schedule") {
         const result = await canAcceptScheduledBooking(
           bookingId,
-          driverData.id
+          scheduledBookings
         );
+
+        if (!result.ok) {
+          socket.emit("acceptBookingError", {
+            message: result.reason,
+          });
+          return;
+        }
+      }
+      if (type === "asap") {
+        const result = await canAcceptAsapBooking(bookingId, scheduledBookings);
 
         if (!result.ok) {
           socket.emit("acceptBookingError", {
@@ -52,7 +72,7 @@ export const acceptBooking = (socket: CustomSocket, io: Server) => {
         socket.emit("acceptBookingError", {
           message: "This booking has already been accepted by another driver.",
         });
-        return; // Stop execution cleanly
+        return;
       }
 
       const room = `BOOKING_${bookingId}`;
