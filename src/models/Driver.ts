@@ -83,6 +83,14 @@ const driverSchema = new Schema(
       engine: { type: String, default: null },
       chassis: { type: String, default: null },
     },
+    expoPushToken: {
+      type: String,
+      default: null,
+    },
+    pushNotificationsEnabled: {
+      type: Boolean,
+      default: true,
+    },
   },
   { timestamps: true }
 );

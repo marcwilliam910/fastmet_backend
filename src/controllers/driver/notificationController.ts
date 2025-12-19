@@ -1,0 +1,186 @@
+// controllers/notificationController.ts
+import { Request, Response } from "express";
+import { Expo } from "expo-server-sdk";
+import DriverModel from "../../models/Driver";
+import { getUserId } from "../../utils/helpers/getUserId";
+
+const expo = new Expo();
+
+/**
+ * Save or update driver's Expo push token
+ * POST /api/notifications/token
+ */
+export const savePushToken = async (req: Request, res: Response) => {
+  try {
+    const { expoPushToken } = req.body;
+    const driverId = getUserId(req);
+
+    console.log("DRIVER ID: ", driverId);
+
+    if (!driverId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    if (!expoPushToken) {
+      return res.status(400).json({ error: "Push token is required" });
+    }
+
+    // Validate token format
+    if (!Expo.isExpoPushToken(expoPushToken)) {
+      return res.status(400).json({
+        error: "Invalid push token format",
+        details: "Token must be in format: ExponentPushToken[...]",
+      });
+    }
+
+    await DriverModel.findByIdAndUpdate(
+      driverId,
+      {
+        expoPushToken,
+        pushNotificationsEnabled: true,
+        updatedAt: new Date(),
+      },
+      { new: true }
+    );
+
+    console.log(`✅ Saved push token for driver ${driverId}`);
+
+    res.json({
+      success: true,
+      message: "Push token saved successfully",
+    });
+  } catch (error) {
+    console.error("❌ Error saving push token:", error);
+    res.status(500).json({ error: "Failed to save push token" });
+  }
+};
+
+/**
+ * Enable push notifications for driver
+ * POST /api/notifications/enable
+ */
+export const enableNotifications = async (req: Request, res: Response) => {
+  try {
+    const driverId = getUserId(req);
+
+    if (!driverId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    await DriverModel.findByIdAndUpdate(driverId, {
+      pushNotificationsEnabled: true,
+    });
+
+    res.json({
+      success: true,
+      message: "Push notifications enabled",
+    });
+  } catch (error) {
+    console.error("❌ Error enabling notifications:", error);
+    res.status(500).json({ error: "Failed to enable notifications" });
+  }
+};
+
+/**
+ * Disable push notifications for driver
+ * POST /api/notifications/disable
+ */
+export const disableNotifications = async (req: Request, res: Response) => {
+  try {
+    const driverId = getUserId(req);
+
+    if (!driverId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    await DriverModel.findByIdAndUpdate(driverId, {
+      pushNotificationsEnabled: false,
+    });
+
+    res.json({
+      success: true,
+      message: "Push notifications disabled",
+    });
+  } catch (error) {
+    console.error("❌ Error disabling notifications:", error);
+    res.status(500).json({ error: "Failed to disable notifications" });
+  }
+};
+
+/**
+ * Get notification settings for driver
+ * GET /api/notifications/settings
+ */
+export const getNotificationSettings = async (req: Request, res: Response) => {
+  try {
+    const driverId = getUserId(req);
+
+    if (!driverId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const driver = await DriverModel.findById(driverId).select(
+      "expoPushToken pushNotificationsEnabled"
+    );
+
+    if (!driver) {
+      return res.status(404).json({ error: "Driver not found" });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        hasToken: !!driver.expoPushToken,
+        enabled: driver.pushNotificationsEnabled,
+      },
+    });
+  } catch (error) {
+    console.error("❌ Error fetching notification settings:", error);
+    res.status(500).json({ error: "Failed to fetch settings" });
+  }
+};
+
+/**
+ * Test push notification (for development/testing)
+ * POST /api/notifications/test
+ */
+export const testPushNotification = async (req: Request, res: Response) => {
+  try {
+    const driverId = getUserId(req);
+
+    if (!driverId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const driver = await DriverModel.findById(driverId);
+
+    if (!driver?.expoPushToken) {
+      return res
+        .status(400)
+        .json({ error: "No push token found for this driver" });
+    }
+
+    if (!Expo.isExpoPushToken(driver.expoPushToken)) {
+      return res.status(400).json({ error: "Invalid push token" });
+    }
+
+    const message = {
+      to: driver.expoPushToken,
+      sound: "default",
+      title: "🧪 Test Notification",
+      body: "This is a test push notification from your logistics app!",
+      data: { type: "test" },
+    };
+
+    const ticket = await expo.sendPushNotificationsAsync([message]);
+
+    res.json({
+      success: true,
+      message: "Test notification sent",
+      ticket,
+    });
+  } catch (error) {
+    console.error("❌ Error sending test notification:", error);
+    res.status(500).json({ error: "Failed to send test notification" });
+  }
+};

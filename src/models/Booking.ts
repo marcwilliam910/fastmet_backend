@@ -52,6 +52,8 @@ export interface IBooking extends Document {
   completedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
+  notificationSent: boolean;
+  notifiedAt: Date | null;
 }
 
 const bookingSchema: Schema = new Schema<IBooking>(
@@ -115,9 +117,25 @@ const bookingSchema: Schema = new Schema<IBooking>(
     ],
     status: { type: String, required: true, default: "pending" },
     completedAt: { type: Date, default: null },
+    notificationSent: {
+      type: Boolean,
+      default: false,
+    },
+    notifiedAt: {
+      type: Date,
+      default: null,
+    },
   },
   { timestamps: true }
 );
+
+// Create index for efficient queries
+bookingSchema.index({
+  status: 1,
+  "bookingType.value": 1,
+  notificationSent: 1,
+  "driver.id": 1,
+});
 
 const BookingModel = model<IBooking>("Booking", bookingSchema);
 export default BookingModel;

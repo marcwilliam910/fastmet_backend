@@ -16,7 +16,10 @@ import authDriverRoute from "./routes/driver/authRoute";
 import conversationDriverRoute from "./routes/driver/conversationRoute";
 import profileDriverRoute from "./routes/driver/profileRoute";
 
+import notificationRoutes from "./routes/driver/notificationRoute";
+
 import { authenticateJWT } from "./middlewares/verifyToken";
+import { startNotificationCron } from "./services/notificationCron";
 
 dotenv.config();
 
@@ -42,6 +45,7 @@ app.use("/api/driver/auth", authDriverRoute);
 app.use("/api/driver/booking", authenticateJWT, driverBookingRoute);
 app.use("/api/driver/profile", authenticateJWT, profileDriverRoute);
 app.use("/api/driver/message", authenticateJWT, conversationDriverRoute);
+app.use("/api/driver/notifications", authenticateJWT, notificationRoutes);
 
 const server = http.createServer(app);
 
@@ -55,6 +59,12 @@ mongoose
     console.log("MongoDB connected");
     server.listen(PORT, () => {
       console.log(`Server running at http://localhost:${PORT}`);
+
+      // ✅ Start cron AFTER MongoDB is connected and server is listening
+      // startNotificationCron();
+      // console.log("⏰ Notification cron job initialized");
+
+      // startTestNotificationCron();
     });
   })
   .catch((err) => {
