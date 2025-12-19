@@ -3,7 +3,11 @@ import {
   getDriverLocation,
   handleBookingSocket,
 } from "./handlers/client/booking";
-import { acceptBooking, driverLocation } from "./handlers/driver/booking";
+import {
+  acceptBooking,
+  driverLocation,
+  handleStartScheduledTrip,
+} from "./handlers/driver/booking";
 import {
   setDriverAvailable,
   toggleOnDuty,
@@ -79,6 +83,7 @@ export const initSocket = (server: any) => {
       acceptBooking(socket, io);
       driverLocation(socket, io);
       setDriverAvailable(socket);
+      handleStartScheduledTrip(socket, io);
     }
 
     // Client-specific handlers

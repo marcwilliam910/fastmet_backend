@@ -1,7 +1,7 @@
 import { Router } from "express";
 
 import {
-  getActiveBooking,
+  // getActiveBooking,
   getBookings,
   getTotalCompletedAndScheduledBookings,
 } from "../../controllers/driver/bookingController";
@@ -9,7 +9,7 @@ import {
 const router = Router();
 
 // not used currently
-router.get("/active", getActiveBooking);
+// router.get("/active", getActiveBooking);
 
 router.get("/by-status", getBookings);
 router.get("/total", getTotalCompletedAndScheduledBookings);

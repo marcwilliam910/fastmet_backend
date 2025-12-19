@@ -75,7 +75,7 @@ export const startNotificationCron = () => {
           to: driver.expoPushToken,
           sound: "default",
           title: "🚗 Scheduled Trip Starting Soon",
-          body: `Your trip to ${booking.dropOff.address} starts in ${minutesUntil} minutes`,
+          body: `Your trip to ${booking.dropOff.name} starts in ${minutesUntil} minutes`,
           data: {
             bookingId: booking._id.toString(),
             bookingRef: booking.bookingRef,

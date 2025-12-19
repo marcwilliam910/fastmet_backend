@@ -4,36 +4,36 @@ import mongoose from "mongoose";
 import { getUserId } from "../../utils/helpers/getUserId";
 
 // not used currently
-export const getActiveBooking: RequestHandler = async (req, res) => {
-  const driverId = getUserId(req);
-  const activeBooking = await BookingModel.findOne({
-    status: "active",
-    "driver.id": new mongoose.Types.ObjectId(driverId),
-  })
-    .populate({
-      path: "customerId", // field that references User model
-      select: "fullName profilePictureUrl phoneNumber", // select needed fields
-    })
-    .lean(); // .lean() for plain JS object (optional, for better performance)
+// export const getActiveBooking: RequestHandler = async (req, res) => {
+//   const driverId = getUserId(req);
+//   const activeBooking = await BookingModel.findOne({
+//     status: "active",
+//     "driver.id": new mongoose.Types.ObjectId(driverId),
+//   })
+//     .populate({
+//       path: "customerId", // field that references User model
+//       select: "fullName profilePictureUrl phoneNumber", // select needed fields
+//     })
+//     .lean(); // .lean() for plain JS object (optional, for better performance)
 
-  if (!activeBooking) {
-    return res.status(404).json({ message: "No active booking found" });
-  }
+//   if (!activeBooking) {
+//     return res.status(404).json({ message: "No active booking found" });
+//   }
 
-  // Rename userId to client
-  const { customerId, ...rest } = activeBooking as any;
-  const formattedBooking = {
-    ...rest,
-    client: {
-      id: customerId._id,
-      name: customerId.fullName,
-      profilePictureUrl: customerId.profilePictureUrl,
-      phoneNumber: customerId.phoneNumber,
-    },
-  };
+//   // Rename userId to client
+//   const { customerId, ...rest } = activeBooking as any;
+//   const formattedBooking = {
+//     ...rest,
+//     client: {
+//       id: customerId._id,
+//       name: customerId.fullName,
+//       profilePictureUrl: customerId.profilePictureUrl,
+//       phoneNumber: customerId.phoneNumber,
+//     },
+//   };
 
-  res.status(200).json(formattedBooking);
-};
+//   res.status(200).json(formattedBooking);
+// };
 
 export const getBookings: RequestHandler = async (req, res) => {
   const driverId = getUserId(req);
@@ -46,11 +46,26 @@ export const getBookings: RequestHandler = async (req, res) => {
   const pageNum = Number(page);
   const limitNum = Number(limit);
 
-  const bookings = await BookingModel.find({
+  const now = new Date();
+  const lateThresholdMinutes = 30;
+
+  const lateBoundary = new Date(
+    now.getTime() - lateThresholdMinutes * 60 * 1000
+  );
+
+  const query: any = {
     "driver.id": new mongoose.Types.ObjectId(driverId),
-    status: status,
-  })
-    .sort({ completedAt: -1 })
+    status,
+  };
+
+  if (status === "scheduled") {
+    query["bookingType.value"] = {
+      $gte: lateBoundary, // includes late (≤ 30 mins)
+    };
+  }
+
+  const bookings = await BookingModel.find(query)
+    .sort({ "bookingType.value": 1 }) // chronological for scheduled
     .skip((pageNum - 1) * limitNum)
     .limit(limitNum);
 
@@ -86,9 +101,17 @@ export const getTotalCompletedAndScheduledBookings: RequestHandler = async (
     status: "completed",
   });
 
+  const now = new Date();
+  const lateThresholdMinutes = 30;
+
+  const lateBoundary = new Date(
+    now.getTime() - lateThresholdMinutes * 60 * 1000
+  );
+
   const totalScheduledBookings = await BookingModel.countDocuments({
     "driver.id": new mongoose.Types.ObjectId(driverId),
     status: "scheduled",
+    "bookingType.value": { $gte: lateBoundary },
   });
 
   res.status(200).json({

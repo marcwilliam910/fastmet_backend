@@ -7,6 +7,7 @@ import {
   canAcceptAsapBooking,
   canAcceptScheduledBooking,
 } from "../../../utils/helpers/bookingFeasibility";
+import mongoose from "mongoose";
 
 export const acceptBooking = (socket: CustomSocket, io: Server) => {
   const on = withErrorHandling(socket);
@@ -147,6 +148,115 @@ export const driverLocation = (socket: CustomSocket, io: Server) => {
 
       // Send location back to the client
       io.to(clientUserId).emit("driverLocationResponse", { driverLoc });
+    }
+  );
+};
+
+export const handleStartScheduledTrip = (socket: CustomSocket, io: Server) => {
+  const on = withErrorHandling(socket);
+
+  on(
+    "startScheduledTrip",
+    async (data: { bookingId: string; driverId: string }) => {
+      const { bookingId, driverId } = data;
+
+      console.log(`🚗 Driver ${driverId} starting scheduled trip ${bookingId}`);
+
+      const hasActive = await BookingModel.exists({
+        "driver.id": new mongoose.Types.ObjectId(driverId),
+        status: "active",
+      });
+
+      console.log("has active: ", hasActive);
+
+      if (hasActive) {
+        socket.emit("startScheduledTripError", {
+          message: "You still have an active trip, please complete it first",
+        });
+        return;
+      }
+
+      // First find without populate for validation
+      const booking = await BookingModel.findById(bookingId)
+        .populate({
+          path: "customerId",
+          select: "fullName profilePictureUrl phoneNumber",
+        })
+        .lean();
+
+      if (!booking) {
+        socket.emit("startScheduledTripError", {
+          message: "Booking not found",
+        });
+        return;
+      }
+      // Verify it's the correct driver
+      if (booking.driver?.id?.toString() !== driverId) {
+        socket.emit("startScheduledTripError", {
+          message: "This booking is not assigned to you",
+        });
+        return;
+      }
+
+      // Verify status is 'scheduled'
+      if (booking.status !== "scheduled") {
+        socket.emit("startScheduledTripError", {
+          message: `Cannot start trip. Current status: ${booking.status}`,
+        });
+        return;
+      }
+
+      // Check if it's within the allowed time window (15 minutes before)
+      const now = new Date();
+      const scheduledTime = new Date(booking.bookingType.value);
+      const minutesUntil = (scheduledTime.getTime() - now.getTime()) / 60000;
+
+      if (minutesUntil > 15) {
+        socket.emit("startScheduledTripError", {
+          message: `Too early. You can start this trip ${Math.ceil(
+            minutesUntil - 15
+          )} minutes from now.`,
+        });
+        return;
+      }
+
+      // ✅ Update using updateOne (more efficient)
+      await BookingModel.updateOne(
+        { _id: bookingId },
+        {
+          $set: {
+            status: "active",
+          },
+        }
+      );
+
+      console.log(`✅ Trip ${bookingId} status changed: scheduled → active`);
+
+      const { customerId, ...rest } = booking as any;
+
+      const formattedBooking = {
+        ...rest,
+        client: {
+          id: customerId._id,
+          name: customerId.fullName,
+          profilePictureUrl: customerId.profilePictureUrl,
+          phoneNumber: customerId.phoneNumber,
+        },
+      };
+
+      socket.emit("scheduledTripStarted", {
+        booking: formattedBooking,
+      });
+
+      // Get customerId for notification (already have it from booking above)
+      // const customerId = booking.customerId;
+
+      // if (customerId) {
+      //   io.to(`customer_${customerId.toString()}`).emit("driverStarted", {
+      //     bookingId: booking._id,
+      //     message: "Your driver has started the trip and is on the way!",
+      //   });
+      // }
     }
   );
 };

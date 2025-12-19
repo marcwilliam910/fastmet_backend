@@ -16,6 +16,7 @@ export const getConversations: RequestHandler = async (req, res) => {
 
   const conversations = await ConversationModel.find({
     driver: new mongoose.Types.ObjectId(driverId),
+    lastMessageAt: { $ne: null },
   })
     .sort({ updatedAt: -1 })
     .skip((pageNum - 1) * limitNum)
