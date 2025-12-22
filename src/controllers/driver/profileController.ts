@@ -1,7 +1,6 @@
 import { RequestHandler } from "express";
 import DriverModel from "../../models/Driver";
 import cloudinary from "../../config/cloudinary";
-import multer from "multer";
 import Driver from "../../models/Driver";
 import { getUserId } from "../../utils/helpers/getUserId";
 
@@ -146,6 +145,3 @@ export const uploadMultipleDriverImages: RequestHandler = async (req, res) => {
     return res.status(500).json({ message: "Upload failed" });
   }
 };
-
-const storage = multer.memoryStorage();
-export const upload = multer({ storage });

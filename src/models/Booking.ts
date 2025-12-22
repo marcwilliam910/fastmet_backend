@@ -54,6 +54,7 @@ export interface IBooking extends Document {
   updatedAt: Date;
   notificationSent: boolean;
   notifiedAt: Date | null;
+  proofImageUrl: string | null;
 }
 
 const bookingSchema: Schema = new Schema<IBooking>(
@@ -123,6 +124,10 @@ const bookingSchema: Schema = new Schema<IBooking>(
     },
     notifiedAt: {
       type: Date,
+      default: null,
+    },
+    proofImageUrl: {
+      type: String,
       default: null,
     },
   },

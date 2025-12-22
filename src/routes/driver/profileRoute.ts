@@ -1,9 +1,9 @@
 import { Router } from "express";
 import {
   updateDriverProfile,
-  upload,
   uploadMultipleDriverImages,
 } from "../../controllers/driver/profileController";
+import { upload } from "../../utils/mutler";
 
 const router = Router();
 

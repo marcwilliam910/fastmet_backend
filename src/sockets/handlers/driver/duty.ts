@@ -178,13 +178,17 @@ export const setDriverAvailable = (socket: CustomSocket) => {
   const on = withErrorHandling(socket);
   on(
     "setAvailability",
-    async (data: { isAvailable: boolean; bookingId: string }) => {
+    async (data: { bookingId: string; proofImageUrl: string }) => {
       socket.join(SOCKET_ROOMS.AVAILABLE);
       console.log(`✅ Driver ${socket.userId} joined AVAILABLE room`);
 
       await BookingModel.findOneAndUpdate(
         { _id: data.bookingId },
-        { status: "completed", completedAt: new Date() },
+        {
+          status: "completed",
+          completedAt: new Date(),
+          proofImageUrl: data.proofImageUrl,
+        },
         { new: true }
       );
 
