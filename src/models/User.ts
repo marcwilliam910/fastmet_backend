@@ -1,31 +1,29 @@
-import {Schema, model} from "mongoose";
+import { Schema, model } from "mongoose";
 
 const userSchema = new Schema(
   {
-    uid: {type: String, required: true, unique: true},
-    email: {type: String, required: true, unique: true},
-    firstName: {type: String, required: true},
-    lastName: {type: String, required: true},
-    middleName: {type: String},
-    birthDate: {type: Date},
-    contactNumber: {type: String},
-    profilePictureUrl: {type: String},
-    fromOAuth: {type: Boolean, default: false},
+    fullName: { type: String },
+    phoneNumber: {
+      type: String,
+      required: true,
+      unique: true,
+      trim: true,
+    },
+    gender: { type: String },
+    address: { type: String },
+    profilePictureUrl: { type: String },
+    isProfileComplete: { type: Boolean, default: false },
+    expoPushToken: {
+      type: String,
+      default: null,
+    },
+    pushNotificationsEnabled: {
+      type: Boolean,
+      default: true,
+    },
   },
-  {timestamps: true}
+  { timestamps: true }
 );
 
 const UserModel = model("User", userSchema);
 export default UserModel;
-
-export type User = {
-  uid: string;
-  email: string;
-  firstName: string;
-  lastName: string;
-  middleName?: string;
-  birthDate: string;
-  contactNumber?: string;
-  profilePictureUrl?: string;
-  fromOAuth: boolean;
-};

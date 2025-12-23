@@ -4,7 +4,7 @@ import { withErrorHandling } from "../../../utils/socketWrapper";
 import { CustomSocket } from "../../socket";
 import { calculateDistance } from "../../../utils/helpers/distanceCalculator";
 import { MAX_DRIVER_RADIUS_KM, SOCKET_ROOMS } from "../../../utils/constants";
-import NewUserModel from "../../../models/NewUser";
+import UserModel from "../../../models/User";
 
 // export const handleBookingSocket = (socket: Socket, io: Server) => {
 //   socket.on("request_booking", async (data) => {
@@ -50,7 +50,7 @@ export const handleBookingSocket = (socket: CustomSocket, io: Server) => {
       status: "pending",
     });
 
-    const client = await NewUserModel.findById(booking.customerId)
+    const client = await UserModel.findById(booking.customerId)
       .select("name profilePictureUrl phoneNumber email")
       .lean();
 

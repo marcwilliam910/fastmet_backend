@@ -7,16 +7,16 @@ import { errorHandler } from "./middlewares/errorHandler";
 import { initSocket } from "./sockets/socket";
 // client routes
 import bookingRoute from "./routes/client/bookingRoute";
-import userRoute from "./routes/client/userRoute";
+import profileClientRoute from "./routes/client/profileRoute";
 import authClientRoute from "./routes/client/authRoute";
 import conversationClientRoute from "./routes/client/conversationRoute";
+import notificationClientRoutes from "./routes/client/notificationRoute";
 // driver routes
 import driverBookingRoute from "./routes/driver/bookingRoute";
 import authDriverRoute from "./routes/driver/authRoute";
 import conversationDriverRoute from "./routes/driver/conversationRoute";
 import profileDriverRoute from "./routes/driver/profileRoute";
-
-import notificationRoutes from "./routes/driver/notificationRoute";
+import notificationDriverRoutes from "./routes/driver/notificationRoute";
 
 import { authenticateJWT } from "./middlewares/verifyToken";
 import { startNotificationCron } from "./services/notificationCron";
@@ -37,15 +37,16 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 app.use("/api/client/auth", authClientRoute);
-app.use("/api/client/user", userRoute);
+app.use("/api/client/profile", authenticateJWT, profileClientRoute);
 app.use("/api/client/booking", authenticateJWT, bookingRoute);
 app.use("/api/client/message", authenticateJWT, conversationClientRoute);
+app.use("/api/client/notifications", authenticateJWT, notificationClientRoutes);
 
 app.use("/api/driver/auth", authDriverRoute);
 app.use("/api/driver/booking", authenticateJWT, driverBookingRoute);
 app.use("/api/driver/profile", authenticateJWT, profileDriverRoute);
 app.use("/api/driver/message", authenticateJWT, conversationDriverRoute);
-app.use("/api/driver/notifications", authenticateJWT, notificationRoutes);
+app.use("/api/driver/notifications", authenticateJWT, notificationDriverRoutes);
 
 const server = http.createServer(app);
 

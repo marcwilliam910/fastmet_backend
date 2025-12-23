@@ -1,6 +1,6 @@
 import { RequestHandler } from "express";
 import { generateJWT } from "../../utils/helpers/jwt";
-import NewUserModel from "../../models/NewUser";
+import UserModel from "../../models/User";
 
 export const sendOTP: RequestHandler = async (req, res) => {
   const { phoneNumber } = req.body;
@@ -37,11 +37,11 @@ export const verifyOTP: RequestHandler = async (req, res) => {
     });
   }
 
-  let user = await NewUserModel.findOne({ phoneNumber: phoneNumber });
+  let user = await UserModel.findOne({ phoneNumber: phoneNumber });
   let status: "existing" | "new";
 
   if (!user) {
-    user = await NewUserModel.create({
+    user = await UserModel.create({
       phoneNumber: phoneNumber,
     });
     status = "new";
@@ -66,6 +66,9 @@ export const verifyOTP: RequestHandler = async (req, res) => {
       isProfileComplete: user.isProfileComplete,
       fullName: user.fullName,
       profilePictureUrl: user.profilePictureUrl,
+      phoneNumber: user.phoneNumber,
+      address: user.address,
+      gender: user.gender,
     },
   });
 };
