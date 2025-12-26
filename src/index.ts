@@ -18,6 +18,9 @@ import conversationDriverRoute from "./routes/driver/conversationRoute";
 import profileDriverRoute from "./routes/driver/profileRoute";
 import notificationDriverRoutes from "./routes/driver/notificationRoute";
 
+// for all
+import fareRoute from "./routes/fareRoute";
+
 import { authenticateJWT } from "./middlewares/verifyToken";
 import { startNotificationCron } from "./services/notificationCron";
 
@@ -47,6 +50,8 @@ app.use("/api/driver/booking", authenticateJWT, driverBookingRoute);
 app.use("/api/driver/profile", authenticateJWT, profileDriverRoute);
 app.use("/api/driver/message", authenticateJWT, conversationDriverRoute);
 app.use("/api/driver/notifications", authenticateJWT, notificationDriverRoutes);
+
+app.use("/api/fare", authenticateJWT, fareRoute);
 
 const server = http.createServer(app);
 
