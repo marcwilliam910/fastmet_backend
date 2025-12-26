@@ -39,7 +39,10 @@ export interface IBooking extends Document {
   routeData: {
     distance: number;
     duration: number;
-    price: number;
+    basePrice: number;
+    distanceFee: number;
+    serviceFee: number;
+    totalPrice: number;
   };
   paymentMethod: string; // "cash" | "online"
   addedServices: {
@@ -105,7 +108,10 @@ const bookingSchema: Schema = new Schema<IBooking>(
     routeData: {
       distance: { type: Number, required: true },
       duration: { type: Number, required: true },
-      price: { type: Number, required: true },
+      basePrice: { type: Number, required: true },
+      distanceFee: { type: Number, required: true },
+      serviceFee: { type: Number, required: true },
+      totalPrice: { type: Number, required: true },
     },
     paymentMethod: { type: String, required: true },
     addedServices: [
