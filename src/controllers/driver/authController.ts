@@ -2,6 +2,7 @@ import { RequestHandler } from "express";
 import DriverModel from "../../models/Driver";
 import { PreRegDriverModel } from "../../models/PreRegDriver";
 import { generateJWT } from "../../utils/helpers/jwt";
+import { normalizePHPhoneNumber } from "../../utils/helpers/phoneNumber";
 
 export const sendOTP: RequestHandler = async (req, res) => {
   const { phoneNumber } = req.body;
@@ -9,6 +10,14 @@ export const sendOTP: RequestHandler = async (req, res) => {
   if (!phoneNumber) {
     return res.status(400).json({
       error: "Phone number is required",
+    });
+  }
+
+  const normalized = normalizePHPhoneNumber(phoneNumber);
+
+  if (!normalized) {
+    return res.status(400).json({
+      error: "Invalid Philippine mobile number",
     });
   }
 
@@ -22,12 +31,18 @@ export const sendOTP: RequestHandler = async (req, res) => {
 export const verifyOTP: RequestHandler = async (req, res) => {
   const { phoneNumber, otpCode: otp } = req.body;
 
-  console.log(otp, phoneNumber);
-
   if (!phoneNumber || !otp) {
     return res.status(400).json({
       error: "Phone number and OTP are required",
       success: false,
+    });
+  }
+
+  const normalizedNumber = normalizePHPhoneNumber(phoneNumber);
+
+  if (!normalizedNumber) {
+    return res.status(400).json({
+      error: "Invalid Philippine mobile number",
     });
   }
 
@@ -41,19 +56,19 @@ export const verifyOTP: RequestHandler = async (req, res) => {
   }
 
   // Simple: check if driver exists
-  let driver = await DriverModel.findOne({ phoneNumber: phoneNumber });
+  let driver = await DriverModel.findOne({ phoneNumber: normalizedNumber });
   let status: "existing" | "pre-registered" | "new";
 
   // If not, create with phone number only (check pre-reg if needed)
   if (!driver) {
     const preReg = await PreRegDriverModel.findOne({
-      phoneNumber: phoneNumber,
+      phoneNumber: normalizedNumber,
     });
 
     status = preReg ? "pre-registered" : "new";
 
     driver = await DriverModel.create({
-      phoneNumber: phoneNumber,
+      phoneNumber: normalizedNumber,
       ...(preReg && {
         name: preReg.name,
         email: preReg.email,

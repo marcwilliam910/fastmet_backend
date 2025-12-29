@@ -5,7 +5,7 @@ const ConversationSchema = new mongoose.Schema(
     _id: { type: String }, // clientId_driverId (sorted)
     client: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "New_User",
+      ref: "User",
       required: true,
     },
     driver: {

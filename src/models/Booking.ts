@@ -65,7 +65,7 @@ const bookingSchema: Schema = new Schema<IBooking>(
     customerId: {
       type: Schema.Types.ObjectId,
       required: true,
-      ref: "New_User",
+      ref: "User",
     },
     bookingRef: { type: String, required: true, unique: true },
     driver: {

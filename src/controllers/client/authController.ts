@@ -1,24 +1,7 @@
 import { RequestHandler } from "express";
 import { generateJWT } from "../../utils/helpers/jwt";
 import UserModel from "../../models/User";
-
-export const normalizePHPhoneNumber = (input: string): string | null => {
-  const cleaned = input.replace(/\s|-/g, "");
-
-  if (/^09\d{9}$/.test(cleaned)) {
-    return "+63" + cleaned.slice(1);
-  }
-
-  if (/^9\d{9}$/.test(cleaned)) {
-    return "+63" + cleaned;
-  }
-
-  if (/^\+639\d{9}$/.test(cleaned)) {
-    return cleaned;
-  }
-
-  return null;
-};
+import { normalizePHPhoneNumber } from "../../utils/helpers/phoneNumber";
 
 export const sendOTP: RequestHandler = async (req, res) => {
   const { phoneNumber } = req.body;
@@ -71,12 +54,12 @@ export const verifyOTP: RequestHandler = async (req, res) => {
     });
   }
 
-  let user = await UserModel.findOne({ phoneNumber: phoneNumber });
+  let user = await UserModel.findOne({ phoneNumber: normalizedNumber });
   let status: "existing" | "new";
 
   if (!user) {
     user = await UserModel.create({
-      phoneNumber: phoneNumber,
+      phoneNumber: normalizedNumber,
     });
     status = "new";
   } else {

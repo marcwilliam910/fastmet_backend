@@ -51,7 +51,7 @@ app.use("/api/driver/profile", authenticateJWT, profileDriverRoute);
 app.use("/api/driver/message", authenticateJWT, conversationDriverRoute);
 app.use("/api/driver/notifications", authenticateJWT, notificationDriverRoutes);
 
-app.use("/api/fare", authenticateJWT, fareRoute);
+app.use("/api/fare", fareRoute);
 
 const server = http.createServer(app);
 
