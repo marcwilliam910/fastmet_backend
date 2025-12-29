@@ -95,14 +95,12 @@ export const uploadMultipleDriverImages: RequestHandler = async (req, res) => {
     }
 
     const files = req.files as Express.Multer.File[];
-    const uploadedResults: Record<string, string> = {};
 
-    // Cloudinary upload loop
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      const type = imageTypes[i]; // each file matches its type
+    // Parallel uploads with Promise.all
+    const uploadPromises = files.map((file, index) => {
+      const type = imageTypes[index];
 
-      const result = await new Promise<any>((resolve, reject) => {
+      return new Promise<{ type: string; url: string }>((resolve, reject) => {
         const stream = cloudinary.uploader.upload_stream(
           {
             folder: `fastmet/drivers/${driverId}`,
@@ -111,16 +109,26 @@ export const uploadMultipleDriverImages: RequestHandler = async (req, res) => {
             resource_type: "image",
           },
           (error, result) => {
-            if (error || !result) reject(error);
-            else resolve(result);
+            if (error || !result) {
+              reject(error);
+            } else {
+              resolve({ type, url: result.secure_url });
+            }
           }
         );
 
         stream.end(file.buffer);
       });
+    });
 
-      uploadedResults[type] = result.secure_url;
-    }
+    // Wait for all uploads to complete
+    const uploadResults = await Promise.all(uploadPromises);
+
+    // Convert array to object
+    const uploadedResults: Record<string, string> = {};
+    uploadResults.forEach(({ type, url }) => {
+      uploadedResults[type] = url;
+    });
 
     // Save all uploaded URLs in MongoDB
     const updateObject: Record<string, any> = {};

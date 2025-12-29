@@ -58,6 +58,9 @@ export interface IBooking extends Document {
   notificationSent: boolean;
   notifiedAt: Date | null;
   proofImageUrl: string | null;
+  note: string;
+  itemType: string | null;
+  photos: string[];
 }
 
 const bookingSchema: Schema = new Schema<IBooking>(
@@ -135,6 +138,18 @@ const bookingSchema: Schema = new Schema<IBooking>(
     proofImageUrl: {
       type: String,
       default: null,
+    },
+    note: {
+      type: String,
+      default: "",
+    },
+    itemType: {
+      type: String,
+      default: null,
+    },
+    photos: {
+      type: [String],
+      default: [],
     },
   },
   { timestamps: true }
