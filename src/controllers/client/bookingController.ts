@@ -3,13 +3,13 @@ import BookingModel from "../../models/Booking";
 import mongoose, { Types } from "mongoose";
 import { getUserId } from "../../utils/helpers/getUserId";
 import cloudinary from "../../config/cloudinary";
-import { equal } from "assert";
 
 export const getBookingsByStatus: RequestHandler = async (req, res) => {
-  const { userId } = req.params;
+  const clientId = getUserId(req);
+
   const { status, page = 1, limit = 5 } = req.query;
 
-  if (!userId) {
+  if (!clientId) {
     return res.status(400).json({ message: "Missing user ID" });
   }
 
@@ -17,7 +17,7 @@ export const getBookingsByStatus: RequestHandler = async (req, res) => {
   const limitNum = Number(limit);
 
   const bookings = await BookingModel.find({
-    customerId: new mongoose.Types.ObjectId(userId),
+    customerId: new mongoose.Types.ObjectId(clientId),
     status,
   })
     .sort({ createdAt: -1 })
@@ -26,7 +26,7 @@ export const getBookingsByStatus: RequestHandler = async (req, res) => {
 
   // Get total count to know if there are more pages
   const total = await BookingModel.countDocuments({
-    customerId: new mongoose.Types.ObjectId(userId),
+    customerId: new mongoose.Types.ObjectId(clientId),
     status,
   });
 
@@ -54,14 +54,14 @@ export const getBooking: RequestHandler = async (req, res) => {
 };
 
 export const getBookingsCount: RequestHandler = async (req, res) => {
-  const { userId } = req.params;
+  const clientId = getUserId(req);
 
-  if (!userId) {
+  if (!clientId) {
     return res.status(400).json({ message: "Missing user ID" });
   }
 
   const result = await BookingModel.aggregate([
-    { $match: { customerId: new mongoose.Types.ObjectId(userId) } },
+    { $match: { customerId: new mongoose.Types.ObjectId(clientId) } },
     {
       $group: {
         _id: "$status",

@@ -1,5 +1,12 @@
 import { Schema, Document, model } from "mongoose";
 
+export type LocationDetails = {
+  name: string;
+  address: string;
+  coords: { lat: number; lng: number };
+  additionalDetails?: string;
+};
+
 export interface IBooking extends Document {
   customerId: Schema.Types.ObjectId;
   bookingRef: string;
@@ -11,22 +18,8 @@ export interface IBooking extends Document {
     name: string;
     rating: number;
   } | null;
-  pickUp: {
-    name: string;
-    address: string;
-    coords: {
-      lat: number;
-      lng: number;
-    };
-  };
-  dropOff: {
-    name: string;
-    address: string;
-    coords: {
-      lat: number;
-      lng: number;
-    };
-  };
+  pickUp: LocationDetails;
+  dropOff: LocationDetails;
   bookingType: {
     type: string; // "asap" | "schedule"
     value: string | Date;
@@ -90,6 +83,7 @@ const bookingSchema: Schema = new Schema<IBooking>(
         lat: { type: Number, required: true },
         lng: { type: Number, required: true },
       },
+      additionalDetails: { type: String },
     },
     dropOff: {
       name: { type: String, required: true },
@@ -98,6 +92,7 @@ const bookingSchema: Schema = new Schema<IBooking>(
         lat: { type: Number, required: true },
         lng: { type: Number, required: true },
       },
+      additionalDetails: { type: String },
     },
     bookingType: {
       type: { type: String, required: true },

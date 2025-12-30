@@ -6,10 +6,6 @@ import { getUserId } from "../../utils/helpers/getUserId";
 
 const expo = new Expo();
 
-/**
- * Save or update driver's Expo push token
- * POST /api/notifications/token
- */
 export const savePushToken = async (req: Request, res: Response) => {
   try {
     const { expoPushToken } = req.body;
@@ -55,10 +51,6 @@ export const savePushToken = async (req: Request, res: Response) => {
   }
 };
 
-/**
- * Enable push notifications for driver
- * POST /api/notifications/enable
- */
 export const enableNotifications = async (req: Request, res: Response) => {
   try {
     const driverId = getUserId(req);
@@ -81,10 +73,6 @@ export const enableNotifications = async (req: Request, res: Response) => {
   }
 };
 
-/**
- * Disable push notifications for driver
- * POST /api/notifications/disable
- */
 export const disableNotifications = async (req: Request, res: Response) => {
   try {
     const driverId = getUserId(req);
@@ -107,10 +95,6 @@ export const disableNotifications = async (req: Request, res: Response) => {
   }
 };
 
-/**
- * Get notification settings for driver
- * GET /api/notifications/settings
- */
 export const getNotificationSettings = async (req: Request, res: Response) => {
   try {
     const driverId = getUserId(req);
@@ -140,10 +124,6 @@ export const getNotificationSettings = async (req: Request, res: Response) => {
   }
 };
 
-/**
- * Test push notification (for development/testing)
- * POST /api/notifications/test
- */
 export const testPushNotification = async (req: Request, res: Response) => {
   try {
     const driverId = getUserId(req);

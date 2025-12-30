@@ -39,6 +39,8 @@ export const verifyOTP: RequestHandler = async (req, res) => {
 
   const normalizedNumber = normalizePHPhoneNumber(phoneNumber);
 
+  console.log(normalizedNumber);
+
   if (!normalizedNumber) {
     return res.status(400).json({
       error: "Invalid Philippine mobile number",
@@ -71,8 +73,6 @@ export const verifyOTP: RequestHandler = async (req, res) => {
     phoneNumber: user.phoneNumber,
     userType: "client",
   });
-
-  console.log(JSON.stringify(user, null, 2));
 
   return res.status(200).json({
     success: true,
