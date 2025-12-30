@@ -1,9 +1,7 @@
 import { Request, Response } from "express";
-import { Expo } from "expo-server-sdk";
 import { getUserId } from "../../utils/helpers/getUserId";
 import UserModel from "../../models/User";
-
-const expo = new Expo();
+import { expo, isValidPushToken } from "../../utils/pushNotifications";
 
 export const savePushToken = async (req: Request, res: Response) => {
   try {
@@ -19,7 +17,7 @@ export const savePushToken = async (req: Request, res: Response) => {
     }
 
     // Validate token format
-    if (!Expo.isExpoPushToken(expoPushToken)) {
+    if (!isValidPushToken(expoPushToken)) {
       return res.status(400).json({
         error: "Invalid push token format",
         details: "Token must be in format: ExponentPushToken[...]",
@@ -137,7 +135,7 @@ export const testPushNotification = async (req: Request, res: Response) => {
         .json({ error: "No push token found for this client" });
     }
 
-    if (!Expo.isExpoPushToken(client.expoPushToken)) {
+    if (!isValidPushToken(client.expoPushToken)) {
       return res.status(400).json({ error: "Invalid push token" });
     }
 

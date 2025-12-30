@@ -4,6 +4,9 @@ import BookingModel from "../../../models/Booking";
 import { calculateDistance } from "../../../utils/helpers/distanceCalculator";
 import { MAX_DRIVER_RADIUS_KM, SOCKET_ROOMS } from "../../../utils/constants";
 import mongoose from "mongoose";
+import UserModel from "../../../models/User";
+import { expo, isValidPushToken } from "../../../utils/pushNotifications";
+import Expo from "expo-server-sdk";
 
 export const toggleOnDuty = (socket: CustomSocket) => {
   const on = withErrorHandling(socket);
@@ -173,12 +176,15 @@ export const updateDriverLocation = (socket: CustomSocket) => {
   });
 };
 
-// Mark driver as unavailable when they accept a booking
 export const setDriverAvailable = (socket: CustomSocket) => {
   const on = withErrorHandling(socket);
   on(
     "setAvailability",
-    async (data: { bookingId: string; proofImageUrl: string }) => {
+    async (data: {
+      bookingId: string;
+      proofImageUrl: string;
+      clientId: string;
+    }) => {
       socket.join(SOCKET_ROOMS.AVAILABLE);
       console.log(`✅ Driver ${socket.userId} joined AVAILABLE room`);
 
@@ -191,6 +197,32 @@ export const setDriverAvailable = (socket: CustomSocket) => {
         },
         { new: true }
       );
+
+      // ✅ Send push notification to the client
+      const client = await UserModel.findById(data.clientId);
+
+      if (client?.expoPushToken && client.pushNotificationsEnabled) {
+        if (isValidPushToken(client.expoPushToken)) {
+          const message = {
+            to: client.expoPushToken,
+            sound: "default",
+            title: "📦 Delivery Completed!",
+            body: "Your package has been delivered successfully. Tap to view proof of delivery.",
+            data: {
+              bookingId: data.bookingId,
+              type: "booking_completed",
+              proofImageUrl: data.proofImageUrl, // Include this so they can view it immediately
+            },
+          };
+
+          try {
+            await expo.sendPushNotificationsAsync([message]);
+            console.log(`📬 Push notification sent to client ${data.clientId}`);
+          } catch (error) {
+            console.error("❌ Failed to send push notification:", error);
+          }
+        }
+      }
 
       // ✅ Fetch pending bookings
       const pendingBookings = await BookingModel.find({
