@@ -8,6 +8,7 @@ import {
   canAcceptScheduledBooking,
 } from "../../../utils/helpers/bookingFeasibility";
 import mongoose from "mongoose";
+import { sendNotifToClient } from "../../../utils/pushNotifications";
 
 export const acceptBooking = (socket: CustomSocket, io: Server) => {
   const on = withErrorHandling(socket);
@@ -85,9 +86,16 @@ export const acceptBooking = (socket: CustomSocket, io: Server) => {
       }
 
       // Notify the client who booked
+      // for in-app toast
       io.to(booking.customerId.toString()).emit("bookingAccepted", {
         customerId: booking.customerId,
       });
+      // for push notif
+      await sendNotifToClient(
+        booking.customerId.toString(),
+        "📦 Booking Accepted!",
+        "Your booking request has been accepted by a driver. Tap to view details."
+      );
 
       // Confirm to driver
       socket.emit("acceptanceConfirmed", { bookingId, bookingType: type });
