@@ -9,9 +9,9 @@ import { upload } from "../../utils/mutler";
 
 const router = Router();
 
-router.get("/", getBookingsByStatus);
-router.get("/counts", getBookingsCount);
-router.get("/live/:bookingId", getBooking);
+router.get("/filters/by-status", getBookingsByStatus);
+router.get("/stats/counts", getBookingsCount);
+router.get("/:bookingId", getBooking);
 router.post("/upload-image", upload.array("images"), uploadBookingImage);
 
 export default router;

@@ -5,38 +5,6 @@ import { getUserId } from "../../utils/helpers/getUserId";
 import sharp from "sharp";
 import cloudinary from "../../config/cloudinary";
 
-// not used currently
-// export const getActiveBooking: RequestHandler = async (req, res) => {
-//   const driverId = getUserId(req);
-//   const activeBooking = await BookingModel.findOne({
-//     status: "active",
-//     "driver.id": new mongoose.Types.ObjectId(driverId),
-//   })
-//     .populate({
-//       path: "customerId", // field that references User model
-//       select: "fullName profilePictureUrl phoneNumber", // select needed fields
-//     })
-//     .lean(); // .lean() for plain JS object (optional, for better performance)
-
-//   if (!activeBooking) {
-//     return res.status(404).json({ message: "No active booking found" });
-//   }
-
-//   // Rename userId to client
-//   const { customerId, ...rest } = activeBooking as any;
-//   const formattedBooking = {
-//     ...rest,
-//     client: {
-//       id: customerId._id,
-//       name: customerId.fullName,
-//       profilePictureUrl: customerId.profilePictureUrl,
-//       phoneNumber: customerId.phoneNumber,
-//     },
-//   };
-
-//   res.status(200).json(formattedBooking);
-// };
-
 export const getBookings: RequestHandler = async (req, res) => {
   const driverId = getUserId(req);
   const { page = 1, limit = 5, status } = req.query;
@@ -56,7 +24,7 @@ export const getBookings: RequestHandler = async (req, res) => {
   );
 
   const query: any = {
-    "driver.id": new mongoose.Types.ObjectId(driverId),
+    driverId: new mongoose.Types.ObjectId(driverId),
     status,
   };
 
@@ -73,7 +41,7 @@ export const getBookings: RequestHandler = async (req, res) => {
 
   // Get total count to know if there are more pages
   const total = await BookingModel.countDocuments({
-    "driver.id": new mongoose.Types.ObjectId(driverId),
+    driverId: new mongoose.Types.ObjectId(driverId),
     status: status,
   });
 
@@ -94,12 +62,12 @@ export const getTotalCompletedAndScheduledBookings: RequestHandler = async (
   }
 
   const totalActiveBookings = await BookingModel.countDocuments({
-    "driver.id": new mongoose.Types.ObjectId(driverId),
+    driverId: new mongoose.Types.ObjectId(driverId),
     status: "active",
   });
 
   const totalCompletedBookings = await BookingModel.countDocuments({
-    "driver.id": new mongoose.Types.ObjectId(driverId),
+    driverId: new mongoose.Types.ObjectId(driverId),
     status: "completed",
   });
 
@@ -111,7 +79,7 @@ export const getTotalCompletedAndScheduledBookings: RequestHandler = async (
   );
 
   const totalScheduledBookings = await BookingModel.countDocuments({
-    "driver.id": new mongoose.Types.ObjectId(driverId),
+    driverId: new mongoose.Types.ObjectId(driverId),
     status: "scheduled",
     "bookingType.value": { $gte: lateBoundary },
   });

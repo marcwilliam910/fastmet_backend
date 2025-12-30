@@ -16,21 +16,19 @@ export const acceptBooking = (socket: CustomSocket, io: Server) => {
     "acceptBooking",
     async ({
       bookingId,
-      driverData,
+      driverId,
       type,
     }: {
       bookingId: string;
-      driverData: { id: string; name: string; rating: number };
+      driverId: string;
       type: "asap" | "schedule" | "pooling";
     }) => {
-      if (!bookingId) throw new Error("bookingId is required");
-      if (!driverData.id || !driverData.name || driverData.rating == null) {
-        throw new Error("Invalid driver data");
-      }
+      if (!bookingId || !driverId)
+        throw new Error("bookingId and driverId is required");
 
       // avoid overlapping scheduled bookings
       const scheduledBookings = await BookingModel.find({
-        "driver.id": driverData.id,
+        driverId: driverId,
         status: "scheduled",
         "bookingType.type": "schedule",
       });
@@ -63,7 +61,7 @@ export const acceptBooking = (socket: CustomSocket, io: Server) => {
         { _id: bookingId, status: "pending" },
 
         {
-          driver: driverData,
+          driverId: driverId,
           status: type === "asap" ? "active" : "scheduled",
         },
         { new: true }
@@ -102,34 +100,6 @@ export const acceptBooking = (socket: CustomSocket, io: Server) => {
   );
 };
 
-// export const completeBooking = (socket: CustomSocket) => {
-//   const on = withErrorHandling(socket);
-
-//   on("completeBooking", async ({ bookingId }: { bookingId: string }) => {
-//     const booking = await BookingModel.findByIdAndUpdate(
-//       bookingId,
-//       { status: "completed" },
-//       { new: true }
-//     );
-
-//     if (!booking) throw new Error("Booking not found");
-
-//     // ✅ Mark driver as available again
-//     socket.join(SOCKET_ROOMS.AVAILABLE);
-
-//     // Notify client
-//     socket
-//       .to(booking.customerId.toString())
-//       .emit("bookingCompleted", { bookingId });
-
-//     socket.emit("completionConfirmed", { bookingId });
-
-//     console.log(
-//       `✅ Booking ${bookingId} completed, driver ${socket.userId} is AVAILABLE again`
-//     );
-//   });
-// };
-
 export const driverLocation = (socket: CustomSocket, io: Server) => {
   socket.on(
     "driverLocation",
@@ -163,7 +133,7 @@ export const handleStartScheduledTrip = (socket: CustomSocket, io: Server) => {
       console.log(`🚗 Driver ${driverId} starting scheduled trip ${bookingId}`);
 
       const hasActive = await BookingModel.exists({
-        "driver.id": new mongoose.Types.ObjectId(driverId),
+        driverId: new mongoose.Types.ObjectId(driverId),
         status: "active",
       });
 
@@ -191,7 +161,7 @@ export const handleStartScheduledTrip = (socket: CustomSocket, io: Server) => {
         return;
       }
       // Verify it's the correct driver
-      if (booking.driver?.id?.toString() !== driverId) {
+      if (booking.driverId?.toString() !== driverId) {
         socket.emit("startScheduledTripError", {
           message: "This booking is not assigned to you",
         });

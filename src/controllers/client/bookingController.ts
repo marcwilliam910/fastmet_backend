@@ -4,6 +4,12 @@ import mongoose, { Types } from "mongoose";
 import { getUserId } from "../../utils/helpers/getUserId";
 import cloudinary from "../../config/cloudinary";
 
+export interface PopulatedDriver {
+  _id: mongoose.Types.ObjectId;
+  name: string;
+  rating: number;
+}
+
 export const getBookingsByStatus: RequestHandler = async (req, res) => {
   const clientId = getUserId(req);
 
@@ -20,9 +26,28 @@ export const getBookingsByStatus: RequestHandler = async (req, res) => {
     customerId: new mongoose.Types.ObjectId(clientId),
     status,
   })
+    .populate("driverId", "_id name rating")
     .sort({ createdAt: -1 })
     .skip((pageNum - 1) * limitNum)
     .limit(limitNum);
+
+  const formattedBookings = bookings.map((booking) => {
+    const obj = booking.toObject();
+
+    const driver = obj.driverId as PopulatedDriver | null;
+
+    return {
+      ...obj,
+      driver: driver
+        ? {
+            id: driver._id,
+            name: driver.name,
+            rating: driver.rating,
+          }
+        : null,
+      driverId: undefined,
+    };
+  });
 
   // Get total count to know if there are more pages
   const total = await BookingModel.countDocuments({
@@ -31,7 +56,7 @@ export const getBookingsByStatus: RequestHandler = async (req, res) => {
   });
 
   res.status(200).json({
-    bookings,
+    bookings: formattedBookings,
     nextPage: pageNum * limitNum < total ? pageNum + 1 : null,
   });
 };
@@ -39,18 +64,32 @@ export const getBookingsByStatus: RequestHandler = async (req, res) => {
 export const getBooking: RequestHandler = async (req, res) => {
   const { bookingId } = req.params;
 
-  // Validate MongoDB ObjectId
   if (!Types.ObjectId.isValid(bookingId)) {
     return res.status(400).json({ message: "Invalid booking ID format" });
   }
-  const booking = await BookingModel.findById(bookingId);
+  const booking = await BookingModel.findById(bookingId)
+    .populate("driverId", "_id name rating")
+    .lean();
 
-  console.log(JSON.stringify(booking, null, 2));
   if (!booking) {
     return res.status(404).json({ message: "Booking not found" });
   }
 
-  res.status(200).json(booking);
+  const obj = booking.toObject();
+
+  const formattedBooking = {
+    ...obj,
+    driver: obj.driverId
+      ? {
+          id: (obj.driverId as any)._id,
+          name: (obj.driverId as any).name,
+          rating: (obj.driverId as any).rating,
+        }
+      : null,
+    driverId: undefined,
+  };
+
+  res.status(200).json(formattedBooking);
 };
 
 export const getBookingsCount: RequestHandler = async (req, res) => {

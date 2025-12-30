@@ -10,14 +10,7 @@ export type LocationDetails = {
 export interface IBooking extends Document {
   customerId: Schema.Types.ObjectId;
   bookingRef: string;
-  driver: {
-    id: {
-      type: Schema.Types.ObjectId;
-      ref: "Driver";
-    };
-    name: string;
-    rating: number;
-  } | null;
+  driverId: Schema.Types.ObjectId | null;
   pickUp: LocationDetails;
   dropOff: LocationDetails;
   bookingType: {
@@ -54,6 +47,7 @@ export interface IBooking extends Document {
   note: string;
   itemType: string | null;
   photos: string[];
+  isRated: boolean;
 }
 
 const bookingSchema: Schema = new Schema<IBooking>(
@@ -64,18 +58,11 @@ const bookingSchema: Schema = new Schema<IBooking>(
       ref: "User",
     },
     bookingRef: { type: String, required: true, unique: true },
-    driver: {
-      type: new Schema(
-        {
-          id: { type: Schema.Types.ObjectId, ref: "Driver" },
-          name: { type: String },
-          rating: { type: Number },
-        },
-        { _id: false } // this prevents Mongoose from adding a default _id
-      ),
+    driverId: {
+      type: Schema.Types.ObjectId,
+      ref: "Driver",
       default: null,
     },
-
     pickUp: {
       name: { type: String, required: true },
       address: { type: String, required: true },
@@ -146,6 +133,10 @@ const bookingSchema: Schema = new Schema<IBooking>(
       type: [String],
       default: [],
     },
+    isRated: {
+      type: Boolean,
+      default: false,
+    },
   },
   { timestamps: true }
 );
@@ -155,7 +146,7 @@ bookingSchema.index({
   status: 1,
   "bookingType.value": 1,
   notificationSent: 1,
-  "driver.id": 1,
+  driverId: 1,
 });
 
 const BookingModel = model<IBooking>("Booking", bookingSchema);

@@ -6,7 +6,6 @@ import { MAX_DRIVER_RADIUS_KM, SOCKET_ROOMS } from "../../../utils/constants";
 import mongoose from "mongoose";
 import UserModel from "../../../models/User";
 import { expo, isValidPushToken } from "../../../utils/pushNotifications";
-import Expo from "expo-server-sdk";
 
 export const toggleOnDuty = (socket: CustomSocket) => {
   const on = withErrorHandling(socket);
@@ -79,7 +78,7 @@ export const toggleOnDuty = (socket: CustomSocket) => {
 
         const activeBooking = await BookingModel.findOne({
           status: "active",
-          "driver.id": new mongoose.Types.ObjectId(socket.userId),
+          driverId: new mongoose.Types.ObjectId(socket.userId),
         })
           .populate({
             path: "customerId",

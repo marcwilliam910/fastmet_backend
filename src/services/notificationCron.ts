@@ -24,9 +24,9 @@ export const startNotificationCron = () => {
           $gt: now,
         },
         notificationSent: { $ne: true },
-        driver: { $ne: null }, // Make sure driver is assigned
+        driverId: { $ne: null }, // Make sure driver is assigned
       })
-        .populate("driver.id", "expoPushToken pushNotificationsEnabled")
+        .populate("driverId", "expoPushToken pushNotificationsEnabled")
         .lean();
 
       if (bookingsToNotify.length === 0) {
@@ -40,7 +40,7 @@ export const startNotificationCron = () => {
 
       for (const booking of bookingsToNotify) {
         // Access driver through nested structure
-        const driver = booking.driver?.id as any;
+        const driver = booking.driverId as any;
 
         if (!driver) {
           console.log(`⚠️ Booking ${booking._id} has no driver assigned`);
