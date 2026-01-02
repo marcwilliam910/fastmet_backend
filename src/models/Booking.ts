@@ -100,12 +100,15 @@ const bookingSchema: Schema = new Schema<IBooking>(
     },
     paymentMethod: { type: String, required: true },
     addedServices: [
-      {
-        id: { type: String, required: true },
-        name: { type: String, required: true },
-        price: { type: Number, required: true },
-        icon: { type: String },
-      },
+      new Schema(
+        {
+          id: { type: String, required: true },
+          name: { type: String, required: true },
+          price: { type: Number, required: true },
+          icon: { type: String },
+        },
+        { _id: false }
+      ),
     ],
     status: { type: String, required: true, default: "pending" },
     completedAt: { type: Date, default: null },

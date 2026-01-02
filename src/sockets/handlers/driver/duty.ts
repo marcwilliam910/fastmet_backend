@@ -50,35 +50,41 @@ export const toggleOnDuty = (socket: CustomSocket) => {
           `with vehicle: ${vehicleType}`
         );
 
-        // ✅ Fetch pending bookings
-        const pendingBookings = await BookingModel.find({
-          status: "pending",
-        }).sort({ createdAt: -1 });
+        // // ✅ Fetch pending bookings
+        // const pendingBookings = await BookingModel.find({
+        //   status: "pending",
+        // })
+        //   .sort({ createdAt: -1 })
+        //   .populate({
+        //     path: "customerId",
+        //     select: "fullName profilePictureUrl phoneNumber",
+        //   })
+        //   .lean();
 
-        // ✅ Filter by location radius AND vehicle type
-        const nearbyBookings = pendingBookings.filter((booking) => {
-          // Check vehicle type match
-          if (booking.selectedVehicle.id !== vehicleType) {
-            return false;
-          }
+        // // ✅ Filter by location radius AND vehicle type
+        // const nearbyBookings = pendingBookings.filter((booking) => {
+        //   // Check vehicle type match
+        //   if (booking.selectedVehicle.id !== vehicleType) {
+        //     return false;
+        //   }
 
-          // Check distance
-          const distance = calculateDistance(
-            {
-              lat: booking.pickUp.coords.lat,
-              lng: booking.pickUp.coords.lng,
-            },
-            {
-              lat: location.lat,
-              lng: location.lng,
-            }
-          );
-          return distance <= MAX_DRIVER_RADIUS_KM;
-        });
+        //   // Check distance
+        //   const distance = calculateDistance(
+        //     {
+        //       lat: booking.pickUp.coords.lat,
+        //       lng: booking.pickUp.coords.lng,
+        //     },
+        //     {
+        //       lat: location.lat,
+        //       lng: location.lng,
+        //     }
+        //   );
+        //   return distance <= MAX_DRIVER_RADIUS_KM;
+        // });
 
-        console.log(
-          `📦 Found ${nearbyBookings.length} nearby bookings for driver ${socket.userId} (${vehicleType})`
-        );
+        // console.log(
+        //   `📦 Found ${nearbyBookings.length} nearby bookings for driver ${socket.userId} (${vehicleType})`
+        // );
 
         const activeBooking = await BookingModel.findOne({
           status: "active",
@@ -89,11 +95,13 @@ export const toggleOnDuty = (socket: CustomSocket) => {
             select: "fullName profilePictureUrl phoneNumber",
           })
           .lean();
-        let formattedBooking = null;
+
+        let formattedActiveBooking = null;
+
         if (activeBooking) {
           // Rename userId to client
           const { customerId, ...rest } = activeBooking as any;
-          formattedBooking = {
+          formattedActiveBooking = {
             ...rest,
             client: {
               id: customerId._id,
@@ -104,10 +112,23 @@ export const toggleOnDuty = (socket: CustomSocket) => {
           };
         }
 
+        // let formattedPendingBookings = nearbyBookings.map((booking) => {
+        //   const { customerId, ...rest } = booking as any;
+        //   return {
+        //     ...rest,
+        //     client: {
+        //       id: customerId._id,
+        //       name: customerId.fullName,
+        //       profilePictureUrl: customerId.profilePictureUrl,
+        //       phoneNumber: customerId.phoneNumber,
+        //     },
+        //   };
+        // });
+
         socket.emit("dutyStatusChanged", {
           isOnDuty: true,
-          pendingBookings: nearbyBookings,
-          activeBooking: formattedBooking,
+          // pendingBookings: formattedPendingBookings,
+          activeBooking: formattedActiveBooking,
         });
       } else {
         // Leave all driver rooms
@@ -150,7 +171,13 @@ export const updateDriverLocation = (socket: CustomSocket) => {
     // ✅ Fetch pending bookings
     const pendingBookings = await BookingModel.find({
       status: "pending",
-    }).sort({ createdAt: -1 });
+    })
+      .sort({ createdAt: -1 })
+      .populate({
+        path: "customerId",
+        select: "fullName profilePictureUrl phoneNumber",
+      })
+      .lean();
 
     // ✅ Filter by NEW location radius
     const nearbyBookings = pendingBookings.filter((booking) => {
@@ -170,12 +197,27 @@ export const updateDriverLocation = (socket: CustomSocket) => {
       return distance <= MAX_DRIVER_RADIUS_KM;
     });
 
+    const formattedPendingBookings = nearbyBookings.map((booking) => {
+      const { customerId, ...rest } = booking as any;
+      return {
+        ...rest,
+        client: {
+          id: customerId._id,
+          name: customerId.fullName,
+          profilePictureUrl: customerId.profilePictureUrl,
+          phoneNumber: customerId.phoneNumber,
+        },
+      };
+    });
+
     console.log(
       `📦 Driver ${socket.userId} now has ${nearbyBookings.length} nearby bookings`
     );
 
     // ✅ Send updated bookings list
-    socket.emit("pendingBookingsUpdated", { bookings: nearbyBookings });
+    socket.emit("pendingBookingsUpdated", {
+      bookings: formattedPendingBookings,
+    });
   });
 };
 
@@ -215,7 +257,13 @@ export const setDriverAvailable = (socket: CustomSocket) => {
       // ✅ Fetch pending bookings
       const pendingBookings = await BookingModel.find({
         status: "pending",
-      }).sort({ createdAt: -1 });
+      })
+        .sort({ createdAt: -1 })
+        .populate({
+          path: "customerId",
+          select: "fullName profilePictureUrl phoneNumber",
+        })
+        .lean();
 
       const location = socket.data.location;
       const vehicleType = socket.data.vehicleType;
@@ -243,12 +291,25 @@ export const setDriverAvailable = (socket: CustomSocket) => {
         return distance <= MAX_DRIVER_RADIUS_KM;
       });
 
+      const formattedPendingBookings = nearbyBookings.map((booking) => {
+        const { customerId, ...rest } = booking as any;
+        return {
+          ...rest,
+          client: {
+            id: customerId._id,
+            name: customerId.fullName,
+            profilePictureUrl: customerId.profilePictureUrl,
+            phoneNumber: customerId.phoneNumber,
+          },
+        };
+      });
+
       console.log(
         `📦 Found ${nearbyBookings.length} nearby bookings for driver ${socket.userId}`
       );
 
       socket.emit("availabilityChanged", {
-        pendingBookings: nearbyBookings,
+        pendingBookings: formattedPendingBookings,
       });
     }
   );
