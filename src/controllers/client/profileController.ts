@@ -11,6 +11,14 @@ export const registerProfile: RequestHandler = async (req, res) => {
 
     let profilePictureUrl = "";
 
+    // Validation
+    if (!clientId) {
+      return res.status(400).json({
+        success: false,
+        error: "Client ID is required",
+      });
+    }
+
     // Upload to Cloudinary if file exists
     if (file) {
       const result = await new Promise<any>((resolve, reject) => {

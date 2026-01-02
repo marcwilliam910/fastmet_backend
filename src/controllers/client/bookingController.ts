@@ -8,6 +8,7 @@ export interface PopulatedDriver {
   _id: mongoose.Types.ObjectId;
   name: string;
   rating: number;
+  profilePictureUrl: string;
 }
 
 export const getBookingsByStatus: RequestHandler = async (req, res) => {
@@ -26,7 +27,7 @@ export const getBookingsByStatus: RequestHandler = async (req, res) => {
     customerId: new mongoose.Types.ObjectId(clientId),
     status,
   })
-    .populate("driverId", "_id name rating")
+    .populate("driverId", "_id name rating, profilePictureUrl")
     .sort({ createdAt: -1 })
     .skip((pageNum - 1) * limitNum)
     .limit(limitNum);
@@ -43,6 +44,7 @@ export const getBookingsByStatus: RequestHandler = async (req, res) => {
             id: driver._id,
             name: driver.name,
             rating: driver.rating,
+            profilePictureUrl: driver.profilePictureUrl,
           }
         : null,
       driverId: undefined,

@@ -41,7 +41,7 @@ const driverSchema = new Schema(
       enum: ["male", "female", "other"],
     },
 
-    profilePictureUrl: { type: String },
+    profilePictureUrl: { type: String, default: null },
 
     registrationStep: {
       type: Number,

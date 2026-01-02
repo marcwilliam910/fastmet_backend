@@ -2,7 +2,7 @@ import { model, Schema } from "mongoose";
 
 const PreRegDriverSchema = new Schema(
   {
-    phone_number: {
+    phoneNumber: {
       type: String,
       required: true,
       unique: true,

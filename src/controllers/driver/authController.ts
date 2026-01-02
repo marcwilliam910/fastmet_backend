@@ -40,6 +40,8 @@ export const verifyOTP: RequestHandler = async (req, res) => {
 
   const normalizedNumber = normalizePHPhoneNumber(phoneNumber);
 
+  console.log(normalizedNumber);
+
   if (!normalizedNumber) {
     return res.status(400).json({
       error: "Invalid Philippine mobile number",
@@ -97,6 +99,7 @@ export const verifyOTP: RequestHandler = async (req, res) => {
       registrationStep: driver.registrationStep,
       approvalStatus: driver.approvalStatus,
       license: driver.licenseNumber,
+      profilePictureUrl: driver.profilePictureUrl,
       rating: driver.rating,
       ...(driver.name && { name: driver.name }),
       ...(driver.email && { email: driver.email }),

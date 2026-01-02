@@ -15,6 +15,33 @@ export const updateDriverProfile: RequestHandler = async (req, res) => {
       error: "Driver ID is required",
     });
   }
+
+  const file = req.file;
+
+  let profilePictureUrl = "";
+
+  // Upload to Cloudinary if file exists
+  if (file) {
+    const result = await new Promise<any>((resolve, reject) => {
+      const stream = cloudinary.uploader.upload_stream(
+        {
+          folder: `fastmet/drivers/${driverId}`,
+          public_id: "profile",
+          overwrite: true,
+          resource_type: "image",
+        },
+        (error, result) => {
+          if (error || !result) reject(error);
+          else resolve(result);
+        }
+      );
+
+      stream.end(file.buffer);
+    });
+
+    profilePictureUrl = result.secure_url;
+  }
+
   // Find driver
   const driver = await DriverModel.findById(driverId);
 
@@ -60,6 +87,7 @@ export const updateDriverProfile: RequestHandler = async (req, res) => {
   if (email) driver.email = email;
   if (vehicle) driver.vehicle = vehicle;
   if (licenseNumber) driver.licenseNumber = licenseNumber;
+  if (profilePictureUrl) driver.profilePictureUrl = profilePictureUrl;
   driver.registrationStep = 2;
 
   await driver.save();
@@ -72,8 +100,7 @@ export const updateDriverProfile: RequestHandler = async (req, res) => {
       email: driver.email,
       vehicle: driver.vehicle,
       licenseNumber: driver.licenseNumber,
-      registrationStep: driver.registrationStep,
-      approvalStatus: driver.approvalStatus,
+      profilePictureUrl: driver.profilePictureUrl,
     },
   });
 };
@@ -152,4 +179,24 @@ export const uploadMultipleDriverImages: RequestHandler = async (req, res) => {
     console.error(err);
     return res.status(500).json({ message: "Upload failed" });
   }
+};
+
+export const getDriverStatus: RequestHandler = async (req, res) => {
+  const driverId = getUserId(req);
+
+  if (!driverId) {
+    return res.status(400).json({ message: "driverId required" });
+  }
+
+  const driver = await Driver.findById(driverId);
+
+  if (!driver) {
+    return res.status(404).json({ message: "Driver not found" });
+  }
+
+  return res.json({
+    success: true,
+    approvalStatus: driver.approvalStatus,
+    registrationStep: driver.registrationStep,
+  });
 };

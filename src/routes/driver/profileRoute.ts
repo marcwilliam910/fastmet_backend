@@ -1,5 +1,6 @@
 import { Router } from "express";
 import {
+  getDriverStatus,
   updateDriverProfile,
   uploadMultipleDriverImages,
 } from "../../controllers/driver/profileController";
@@ -7,8 +8,8 @@ import { upload } from "../../utils/mutler";
 
 const router = Router();
 
-// router.get("/pending", getPendingBookings);
-router.patch("/", updateDriverProfile);
+router.get("/status", getDriverStatus);
+router.patch("/", upload.single("profilePicture"), updateDriverProfile);
 router.post(
   "/documents-upload",
   upload.array("images"),
