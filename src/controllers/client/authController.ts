@@ -2,6 +2,13 @@ import { RequestHandler } from "express";
 import { generateJWT } from "../../utils/helpers/jwt";
 import UserModel from "../../models/User";
 import { normalizePHPhoneNumber } from "../../utils/helpers/phoneNumber";
+import {
+  checkOTPRateLimit,
+  checkVerifyRateLimit,
+  clearVerificationAttempts,
+  recordFailedVerification,
+  recordOTPAttempt,
+} from "../../utils/helpers/otpRateLimiter";
 
 export const sendOTP: RequestHandler = async (req, res) => {
   const { phoneNumber } = req.body;
@@ -20,7 +27,20 @@ export const sendOTP: RequestHandler = async (req, res) => {
     });
   }
 
-  // TODO: Send OTP
+  // Check rate limit
+  const rateLimitCheck = await checkOTPRateLimit(normalized);
+
+  if (!rateLimitCheck.allowed) {
+    return res.status(429).json({
+      error: rateLimitCheck.message,
+      retryAfter: rateLimitCheck.retryAfter,
+    });
+  }
+
+  // TODO: Send actual OTP via Twilio (add later)
+
+  // Record this attempt AFTER successful send
+  await recordOTPAttempt(normalized);
 
   res.status(200).json({
     success: true,
@@ -39,22 +59,38 @@ export const verifyOTP: RequestHandler = async (req, res) => {
 
   const normalizedNumber = normalizePHPhoneNumber(phoneNumber);
 
-  console.log(normalizedNumber);
-
   if (!normalizedNumber) {
     return res.status(400).json({
       error: "Invalid Philippine mobile number",
+      success: false,
+    });
+  }
+
+  // Check verification rate limit
+  const rateLimitCheck = await checkVerifyRateLimit(normalizedNumber);
+
+  if (!rateLimitCheck.allowed) {
+    return res.status(429).json({
+      error: rateLimitCheck.message,
+      retryAfter: rateLimitCheck.retryAfter,
+      success: false,
     });
   }
 
   const DUMMY_OTP = "123456";
 
   if (otp !== DUMMY_OTP) {
+    // Record failed attempt
+    await recordFailedVerification(normalizedNumber);
+
     return res.status(400).json({
       error: "Invalid OTP, please try again",
       success: false,
     });
   }
+
+  // Clear verification attempts on success
+  await clearVerificationAttempts(normalizedNumber);
 
   let user = await UserModel.findOne({ phoneNumber: normalizedNumber });
   let status: "existing" | "new";
