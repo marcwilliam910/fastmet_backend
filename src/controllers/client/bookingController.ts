@@ -27,18 +27,20 @@ export const getBookingsByStatus: RequestHandler = async (req, res) => {
     customerId: new mongoose.Types.ObjectId(clientId),
     status,
   })
-    .populate("driverId", "_id name rating, profilePictureUrl")
+    .populate("driverId", "_id name rating profilePictureUrl")
     .sort({ createdAt: -1 })
     .skip((pageNum - 1) * limitNum)
-    .limit(limitNum);
+    .limit(limitNum)
+    .lean();
 
   const formattedBookings = bookings.map((booking) => {
-    const obj = booking.toObject();
+    const driver = booking.driverId as PopulatedDriver | null;
 
-    const driver = obj.driverId as PopulatedDriver | null;
+    // Use object destructuring to exclude driverId
+    const { driverId, ...bookingData } = booking;
 
     return {
-      ...obj,
+      ...bookingData,
       driver: driver
         ? {
             id: driver._id,
@@ -47,7 +49,6 @@ export const getBookingsByStatus: RequestHandler = async (req, res) => {
             profilePictureUrl: driver.profilePictureUrl,
           }
         : null,
-      driverId: undefined,
     };
   });
 
@@ -70,22 +71,21 @@ export const getBooking: RequestHandler = async (req, res) => {
     return res.status(400).json({ message: "Invalid booking ID format" });
   }
   const booking = await BookingModel.findById(bookingId)
-    .populate("driverId", "_id name rating")
+    .populate("driverId", "_id name rating profilePictureUrl")
     .lean();
 
   if (!booking) {
     return res.status(404).json({ message: "Booking not found" });
   }
 
-  const obj = booking.toObject();
-
   const formattedBooking = {
-    ...obj,
-    driver: obj.driverId
+    ...booking,
+    driver: booking.driverId
       ? {
-          id: (obj.driverId as any)._id,
-          name: (obj.driverId as any).name,
-          rating: (obj.driverId as any).rating,
+          id: (booking.driverId as any)._id,
+          name: (booking.driverId as any).name,
+          rating: (booking.driverId as any).rating,
+          profilePictureUrl: (booking.driverId as any).profilePictureUrl,
         }
       : null,
     driverId: undefined,

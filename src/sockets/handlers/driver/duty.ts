@@ -249,7 +249,7 @@ export const setDriverAvailable = (socket: CustomSocket) => {
         "📦 Delivery Completed!",
         "Your package has been delivered successfully. Tap to view proof of delivery.",
         {
-          bookingId: data.bookingId,
+          // bookingId: data.bookingId,
           type: "booking_completed",
         }
       );
