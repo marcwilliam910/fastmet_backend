@@ -122,12 +122,12 @@ export const handleBookingSocket = (socket: CustomSocket, io: Server) => {
     // 7. Emit booking to room
     io.to(temporaryRoom).emit("new_booking_request", driverPayload);
 
-    // Notify client
-    socket.emit("booking_request_sent", {
-      bookingId: booking._id,
-      driversNotified: nearbyDrivers.length,
-      vehicleType,
-    });
+    // Notify client (have available drivers)
+    // socket.emit("booking_request_sent", {
+    //   bookingId: booking._id,
+    //   driversNotified: nearbyDrivers.length,
+    //   vehicleType,
+    // });
 
     console.log(
       `📤 Booking ${booking._id} sent to ${nearbyDrivers.length} ${vehicleType} drivers in room ${temporaryRoom}`

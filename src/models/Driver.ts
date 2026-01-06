@@ -1,6 +1,43 @@
-import { model, Schema } from "mongoose";
+import { model, Schema, Document, Types } from "mongoose";
 
-const driverSchema = new Schema(
+export interface IDriverRating {
+  average: number;
+  count: number;
+  total: number;
+}
+
+export interface IDriver extends Document {
+  phoneNumber: string;
+  email?: string;
+  vehicle?: "car" | "motorcycle" | "truck" | "van";
+  name?: string;
+  rating: IDriverRating;
+  birthDate?: Date;
+  gender?: "male" | "female" | "other";
+  profilePictureUrl?: string;
+  registrationStep: number;
+  approvalStatus: "pending" | "approved" | "rejected";
+  preRegId?: Types.ObjectId;
+  licenseNumber?: string;
+  images: {
+    selfie?: string;
+    selfieWithLicense?: string;
+    front?: string;
+    sideLeft?: string;
+    sideRight?: string;
+    back?: string;
+    or?: string;
+    cr?: string;
+    engine?: string;
+    chassis?: string;
+  };
+  expoPushToken?: string;
+  pushNotificationsEnabled: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+const driverSchema = new Schema<IDriver>(
   {
     phoneNumber: {
       type: String,
@@ -28,10 +65,20 @@ const driverSchema = new Schema(
     },
 
     rating: {
-      type: Number,
-      default: 5.0,
-      min: 0,
-      max: 5,
+      average: {
+        type: Number,
+        default: 5.0,
+        min: 0,
+        max: 5,
+      },
+      count: {
+        type: Number,
+        default: 0,
+      },
+      total: {
+        type: Number,
+        default: 0,
+      },
     },
 
     birthDate: { type: Date },
@@ -95,5 +142,5 @@ const driverSchema = new Schema(
   { timestamps: true }
 );
 
-const DriverModel = model("Driver", driverSchema);
+const DriverModel = model<IDriver>("Driver", driverSchema);
 export default DriverModel;

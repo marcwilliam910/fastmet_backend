@@ -47,7 +47,7 @@ export interface IBooking extends Document {
   note: string;
   itemType: string | null;
   photos: string[];
-  isRated: boolean;
+  driverRating: number | null;
 }
 
 const bookingSchema: Schema = new Schema<IBooking>(
@@ -136,9 +136,11 @@ const bookingSchema: Schema = new Schema<IBooking>(
       type: [String],
       default: [],
     },
-    isRated: {
-      type: Boolean,
-      default: false,
+    driverRating: {
+      type: Number,
+      min: 1,
+      max: 5,
+      default: null,
     },
   },
   { timestamps: true }
