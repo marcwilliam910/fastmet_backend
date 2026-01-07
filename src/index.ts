@@ -19,10 +19,11 @@ import profileDriverRoute from "./routes/driver/profileRoute";
 import notificationDriverRoutes from "./routes/driver/notificationRoute";
 
 // for all
-import fareRoute from "./routes/fareRoute";
+import vehicleRoute from "./routes/vehicleRoute";
 
 import { authenticateJWT } from "./middlewares/verifyToken";
 import { startNotificationCron } from "./services/notificationCron";
+import { migrateVehicleTypes } from "./migrate";
 
 dotenv.config();
 
@@ -51,7 +52,7 @@ app.use("/api/driver/profile", authenticateJWT, profileDriverRoute);
 app.use("/api/driver/message", authenticateJWT, conversationDriverRoute);
 app.use("/api/driver/notifications", authenticateJWT, notificationDriverRoutes);
 
-app.use("/api/fare", fareRoute);
+app.use("/api/vehicles", vehicleRoute);
 
 const server = http.createServer(app);
 

@@ -71,7 +71,7 @@ export function chatHandler(socket: CustomSocket, io: Server) {
         const result = await new Promise<any>((resolve, reject) => {
           const stream = cloudinary.uploader.upload_stream(
             {
-              folder: `fastmet/chat/${conversationId}`,
+              folder: `fastmet/chats/${conversationId}`,
               resource_type: "image",
             },
             (error, result) => {

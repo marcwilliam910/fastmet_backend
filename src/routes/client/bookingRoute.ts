@@ -4,6 +4,7 @@ import {
   getBookingsByStatus,
   getBookingsCount,
   rateDriver,
+  updatePartialBookingData,
   uploadBookingImage,
 } from "../../controllers/client/bookingController";
 import { upload } from "../../utils/mutler";
@@ -16,5 +17,6 @@ router.get("/:bookingId", getBooking);
 router.post("/upload-image", upload.array("images"), uploadBookingImage);
 
 router.patch("/rate-driver/:bookingId", rateDriver);
+router.patch("/update-partial/:bookingId", updatePartialBookingData);
 
 export default router;
