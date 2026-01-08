@@ -23,7 +23,7 @@ import vehicleRoute from "./routes/vehicleRoute";
 
 import { authenticateJWT } from "./middlewares/verifyToken";
 import { startNotificationCron } from "./services/notificationCron";
-import { migrateVehicleTypes } from "./migrate";
+import { migrateVehicleServicesV2 } from "./migrate";
 
 dotenv.config();
 
@@ -62,8 +62,10 @@ app.use(errorHandler);
 
 mongoose
   .connect(process.env.MONGODB_URI!)
-  .then(() => {
+  .then(async () => {
     console.log("MongoDB connected");
+
+    // await migrateVehicleServicesV2();
     server.listen(PORT, () => {
       console.log(`Server running at http://localhost:${PORT}`);
 
