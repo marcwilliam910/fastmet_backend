@@ -1,4 +1,5 @@
 import { Schema, Document, model } from "mongoose";
+import { ILoadVariant, IVehicleType } from "./Vehicle";
 
 export type LocationDetails = {
   name: string;
@@ -6,6 +7,25 @@ export type LocationDetails = {
   coords: { lat: number; lng: number };
   additionalDetails?: string;
 };
+
+interface Service {
+  key: string; // extra_helper, extra_waiting_time, special_help, etc.
+  name: string; // Display name: "Extra Helper", "Extra Waiting Time"
+  desc: string; // Description of what this service includes
+  price: number; // Price in PHP (0 for free services)
+  unit: string; // "per person", "per 15 minutes", "per service", etc.
+  isQuantifiable: boolean; // true if user can request multiple (like extra helpers), false for one-time services
+  maxQuantity?: number; // Optional: max quantity user can request (e.g., max 5 helpers)
+  isActive: boolean;
+  quantity: number; // number of units requested by user
+}
+
+interface SelectedVehicle {
+  key: string;
+  name: string;
+  imageUrl: string;
+  freeServices: Service[];
+}
 
 export interface IBooking extends Document {
   customerId: Schema.Types.ObjectId;
@@ -17,11 +37,7 @@ export interface IBooking extends Document {
     type: string; // "asap" | "schedule"
     value: string | Date;
   };
-  selectedVehicle: {
-    id: string;
-    name: string;
-    capacity: string;
-  };
+  selectedVehicle: SelectedVehicle;
   routeData: {
     distance: number;
     duration: number;
@@ -31,12 +47,7 @@ export interface IBooking extends Document {
     totalPrice: number;
   };
   paymentMethod: string; // "cash" | "online"
-  addedServices: {
-    id: string;
-    name: string;
-    price: number;
-    icon?: string;
-  }[];
+  addedServices: Service[];
   status: string; // "pending" | "active" | "cancelled"
   completedAt: Date | null;
   createdAt: Date;
@@ -86,9 +97,30 @@ const bookingSchema: Schema = new Schema<IBooking>(
       value: { type: Schema.Types.Mixed, required: true },
     },
     selectedVehicle: {
-      id: { type: String, required: true },
-      name: { type: String, required: true },
-      capacity: { type: String },
+      key: {
+        type: String,
+        required: true,
+        index: true,
+      },
+      name: {
+        type: String,
+        required: true,
+      },
+      imageUrl: {
+        type: String,
+        required: true,
+      },
+      freeServices: [
+        {
+          type: {
+            key: { type: String, required: true },
+            name: { type: String, required: true },
+            price: { type: Number, required: true },
+            quantity: { type: Number },
+            _id: false,
+          },
+        },
+      ],
     },
     routeData: {
       distance: { type: Number, required: true },
@@ -100,15 +132,13 @@ const bookingSchema: Schema = new Schema<IBooking>(
     },
     paymentMethod: { type: String, required: true },
     addedServices: [
-      new Schema(
-        {
-          id: { type: String, required: true },
-          name: { type: String, required: true },
-          price: { type: Number, required: true },
-          icon: { type: String },
-        },
-        { _id: false }
-      ),
+      {
+        key: { type: String, required: true },
+        name: { type: String, required: true },
+        price: { type: Number, required: true },
+        quantity: { type: Number },
+        _id: false,
+      },
     ],
     status: { type: String, required: true, default: "pending" },
     completedAt: { type: Date, default: null },

@@ -12,14 +12,16 @@ export const handleBookingSocket = (socket: CustomSocket, io: Server) => {
   on("request_booking", async (data) => {
     console.log("📨 Booking request received:", data);
 
-    // 1. Save booking to DB
+    /* ------------------------------------------------------------------ */
+    /* 1. Save booking                                                     */
+    /* ------------------------------------------------------------------ */
     const booking = await BookingModel.create({
       ...data,
       status: "pending",
     });
 
     const client = await UserModel.findById(booking.customerId)
-      .select("name profilePictureUrl phoneNumber email")
+      .select("fullName profilePictureUrl phoneNumber email")
       .lean();
 
     if (!client) {
@@ -32,28 +34,13 @@ export const handleBookingSocket = (socket: CustomSocket, io: Server) => {
 
     const temporaryRoom = `BOOKING_${booking._id}`;
 
-    // Confirm booking was saved
     socket.emit("booking_request_saved", { success: true });
-    // 2. Payload
-    const driverPayload = {
-      client: {
-        id: client._id,
-        name: client.fullName,
-        profilePictureUrl: client.profilePictureUrl,
-        phoneNumber: client.phoneNumber,
-      },
-      bookingId: booking._id,
-      pickUp: booking.pickUp,
-      dropOff: booking.dropOff,
-      bookingType: booking.bookingType,
-      routeData: booking.routeData,
-      selectedVehicle: booking.selectedVehicle,
-      addedServices: booking.addedServices,
-      paymentMethod: booking.paymentMethod,
-    };
+    console.log("booking_request_saved called");
 
-    // 3. Determine vehicle type from booking
-    const vehicleType = booking.selectedVehicle.id;
+    /* ------------------------------------------------------------------ */
+    /* 2. Vehicle filtering                                                */
+    /* ------------------------------------------------------------------ */
+    const vehicleType = booking.selectedVehicle?.key;
 
     if (!vehicleType) {
       socket.emit("booking_request_failed", {
@@ -64,7 +51,9 @@ export const handleBookingSocket = (socket: CustomSocket, io: Server) => {
 
     const vehicleRoom = `VEHICLE_${vehicleType.toUpperCase()}`;
 
-    // 4. Get available & on-duty drivers with matching vehicle type
+    /* ------------------------------------------------------------------ */
+    /* 3. Fetch available drivers                                          */
+    /* ------------------------------------------------------------------ */
     const availableDriverSockets = await io
       .in(SOCKET_ROOMS.ON_DUTY)
       .in(SOCKET_ROOMS.AVAILABLE)
@@ -75,33 +64,45 @@ export const handleBookingSocket = (socket: CustomSocket, io: Server) => {
       `🔍 Found ${availableDriverSockets.length} available ${vehicleType} drivers`
     );
 
-    // 5. Location filtering
-    const nearbyDrivers = availableDriverSockets.filter((driverSocket: any) => {
-      const driverLocation = driverSocket.data.location;
-      if (!driverLocation) {
-        console.log(`⚠️ Driver ${driverSocket.data.userId} has no location`);
-        return false;
-      }
+    /* ------------------------------------------------------------------ */
+    /* 4. Distance filtering + enrichment                                  */
+    /* ------------------------------------------------------------------ */
+    const pickupCoords = {
+      lat: booking.pickUp.coords.lat,
+      lng: booking.pickUp.coords.lng,
+    };
 
-      const distance = calculateDistance(
-        {
-          lat: booking.pickUp.coords.lat,
-          lng: booking.pickUp.coords.lng,
-        },
-        {
+    const nearbyDrivers = availableDriverSockets
+      .map((driverSocket: any) => {
+        const driverLocation = driverSocket.data.location;
+
+        if (!driverLocation) {
+          console.log(`⚠️ Driver ${driverSocket.data.userId} has no location`);
+          return null;
+        }
+
+        const distance = calculateDistance(pickupCoords, {
           lat: driverLocation.lat,
           lng: driverLocation.lng,
-        }
-      );
+        });
 
-      console.log(
-        `📏 Driver ${driverSocket.data.userId} (${
-          driverSocket.data.vehicleType
-        }) is ${distance.toFixed(2)} km away`
-      );
+        console.log(
+          `📏 Driver ${driverSocket.data.userId} (${
+            driverSocket.data.vehicleType
+          }) is ${distance.toFixed(2)} km away`
+        );
 
-      return distance <= MAX_DRIVER_RADIUS_KM;
-    });
+        if (distance > MAX_DRIVER_RADIUS_KM) return null;
+
+        return {
+          socket: driverSocket,
+          distanceKm: Number(distance.toFixed(2)),
+        };
+      })
+      .filter(Boolean) as {
+      socket: any;
+      distanceKm: number;
+    }[];
 
     if (nearbyDrivers.length === 0) {
       socket.emit("no_drivers_available", {
@@ -110,27 +111,47 @@ export const handleBookingSocket = (socket: CustomSocket, io: Server) => {
       return;
     }
 
-    console.log(
-      `🚗 Adding ${nearbyDrivers.length} ${vehicleType} drivers to ${temporaryRoom}`
-    );
-
-    // 6. Join nearby drivers to this booking room
-    nearbyDrivers.forEach((driverSocket) => {
-      driverSocket.join(temporaryRoom);
+    /* ------------------------------------------------------------------ */
+    /* 5. Join drivers to temporary room                                   */
+    /* ------------------------------------------------------------------ */
+    nearbyDrivers.forEach(({ socket }) => {
+      socket.join(temporaryRoom);
     });
 
-    // 7. Emit booking to room
-    io.to(temporaryRoom).emit("new_booking_request", driverPayload);
+    console.log(
+      `🚗 Added ${nearbyDrivers.length} ${vehicleType} drivers to room ${temporaryRoom}`
+    );
 
-    // Notify client (have available drivers)
-    // socket.emit("booking_request_sent", {
-    //   bookingId: booking._id,
-    //   driversNotified: nearbyDrivers.length,
-    //   vehicleType,
-    // });
+    /* ------------------------------------------------------------------ */
+    /* 6. Emit booking (driver-specific payload)                            */
+    /* ------------------------------------------------------------------ */
+    nearbyDrivers.forEach(({ socket, distanceKm }) => {
+      socket.emit("new_booking_request", {
+        _id: booking._id,
+        bookingRef: booking.bookingRef,
+        client: {
+          id: client._id,
+          name: client.fullName,
+          profilePictureUrl: client.profilePictureUrl,
+          phoneNumber: client.phoneNumber,
+        },
+        pickUp: booking.pickUp,
+        dropOff: booking.dropOff,
+        bookingType: booking.bookingType,
+        routeData: booking.routeData,
+        selectedVehicle: booking.selectedVehicle,
+        addedServices: booking.addedServices,
+        paymentMethod: booking.paymentMethod,
+        note: booking.note,
+        itemType: booking.itemType,
+        photos: booking.photos,
+        // 🔑 driver-specific metric
+        distanceFromPickup: distanceKm,
+      });
+    });
 
     console.log(
-      `📤 Booking ${booking._id} sent to ${nearbyDrivers.length} ${vehicleType} drivers in room ${temporaryRoom}`
+      `📤 Booking ${booking._id} dispatched to ${nearbyDrivers.length} ${vehicleType} drivers`
     );
   });
 };

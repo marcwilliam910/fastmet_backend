@@ -6,7 +6,7 @@ interface IPricingTier {
   pricePerKm: number;
 }
 
-interface ILoadVariant {
+export interface ILoadVariant {
   maxLoadKg: number;
   baseFare: number;
   pricingTiers: IPricingTier[];

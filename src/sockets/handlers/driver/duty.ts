@@ -181,7 +181,7 @@ export const updateDriverLocation = (socket: CustomSocket) => {
 
     // ✅ Filter by NEW location radius
     const nearbyBookings = pendingBookings.filter((booking) => {
-      if (booking.selectedVehicle.id !== vehicleType) {
+      if (booking.selectedVehicle.key !== vehicleType) {
         return false;
       }
       const distance = calculateDistance(
@@ -274,7 +274,7 @@ export const setDriverAvailable = (socket: CustomSocket) => {
 
       // ✅ Filter by location radius
       const nearbyBookings = pendingBookings.filter((booking) => {
-        if (booking.selectedVehicle.id !== vehicleType) {
+        if (booking.selectedVehicle.key !== vehicleType) {
           return false;
         }
 
