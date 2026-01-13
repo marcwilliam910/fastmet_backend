@@ -19,7 +19,7 @@ export const toggleOnDuty = (socket: CustomSocket) => {
     async (data: {
       isOnDuty: boolean;
       location?: { lat: number; lng: number };
-      vehicleType?: "motorcycle" | "car" | "suv" | "truck";
+      vehicleType?: string;
     }) => {
       const { isOnDuty, location, vehicleType } = data;
 

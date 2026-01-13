@@ -1,12 +1,16 @@
 import { Server, Socket } from "socket.io";
 import {
+  cancelBooking,
   getDriverLocation,
   handleBookingSocket,
+  pickDriver,
 } from "./handlers/client/booking";
 import {
-  acceptBooking,
+  cancelOffer,
+  // acceptBooking,
   driverLocation,
   handleStartScheduledTrip,
+  requestAcceptance,
 } from "./handlers/driver/booking";
 import {
   setDriverAvailable,
@@ -80,16 +84,20 @@ export const initSocket = (server: any) => {
     if (socket.userType === "driver") {
       toggleOnDuty(socket);
       updateDriverLocation(socket);
-      acceptBooking(socket, io);
+      // acceptBooking(socket, io);
       driverLocation(socket, io);
       setDriverAvailable(socket);
       handleStartScheduledTrip(socket, io);
+      requestAcceptance(socket, io);
+      cancelOffer(socket, io);
     }
 
     // Client-specific handlers
     if (socket.userType === "client") {
       handleBookingSocket(socket, io);
       getDriverLocation(socket, io);
+      pickDriver(socket, io);
+      cancelBooking(socket, io);
     }
 
     socket.on("disconnect", () => {

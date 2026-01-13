@@ -1,24 +1,5 @@
 import { Schema, Document, model } from "mongoose";
-import { ILoadVariant, IVehicleType } from "./Vehicle";
-
-export type LocationDetails = {
-  name: string;
-  address: string;
-  coords: { lat: number; lng: number };
-  additionalDetails?: string;
-};
-
-interface Service {
-  key: string; // extra_helper, extra_waiting_time, special_help, etc.
-  name: string; // Display name: "Extra Helper", "Extra Waiting Time"
-  desc: string; // Description of what this service includes
-  price: number; // Price in PHP (0 for free services)
-  unit: string; // "per person", "per 15 minutes", "per service", etc.
-  isQuantifiable: boolean; // true if user can request multiple (like extra helpers), false for one-time services
-  maxQuantity?: number; // Optional: max quantity user can request (e.g., max 5 helpers)
-  isActive: boolean;
-  quantity: number; // number of units requested by user
-}
+import { LocationDetails, Service } from "../types/booking";
 
 interface SelectedVehicle {
   key: string;
@@ -59,6 +40,7 @@ export interface IBooking extends Document {
   itemType: string | null;
   photos: string[];
   driverRating: number | null;
+  requestedDrivers: Schema.Types.ObjectId[];
 }
 
 const bookingSchema: Schema = new Schema<IBooking>(
@@ -172,6 +154,12 @@ const bookingSchema: Schema = new Schema<IBooking>(
       max: 5,
       default: null,
     },
+    requestedDrivers: [
+      {
+        type: Schema.Types.ObjectId,
+        ref: "Driver",
+      },
+    ],
   },
   { timestamps: true }
 );
@@ -179,6 +167,7 @@ const bookingSchema: Schema = new Schema<IBooking>(
 // Create index for efficient queries
 bookingSchema.index({
   status: 1,
+  requestedDrivers: 1,
   "bookingType.value": 1,
   notificationSent: 1,
   driverId: 1,

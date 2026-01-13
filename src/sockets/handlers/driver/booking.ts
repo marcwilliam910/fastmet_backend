@@ -9,6 +9,7 @@ import {
 } from "../../../utils/helpers/bookingFeasibility";
 import mongoose from "mongoose";
 import { sendNotifToClient } from "../../../utils/pushNotifications";
+import DriverModel from "../../../models/Driver";
 
 export const acceptBooking = (socket: CustomSocket, io: Server) => {
   const on = withErrorHandling(socket);
@@ -235,6 +236,95 @@ export const handleStartScheduledTrip = (socket: CustomSocket, io: Server) => {
       //     message: "Your driver has started the trip and is on the way!",
       //   });
       // }
+    }
+  );
+};
+
+export const requestAcceptance = (socket: CustomSocket, io: Server) => {
+  const on = withErrorHandling(socket);
+
+  on(
+    "requestAcceptance",
+    async (payload: {
+      id: string; // driver ID
+      bookingId: string;
+      clientUserId: string;
+      name: string;
+      vehicleImage: string;
+      distance: number;
+      profilePicture: string;
+    }) => {
+      const { id: driverId, bookingId, clientUserId } = payload;
+
+      // avoid overlapping scheduled bookings
+      const scheduledBookings = await BookingModel.find({
+        driverId: driverId,
+        status: "scheduled",
+        "bookingType.type": "schedule",
+      });
+      const result = await canAcceptAsapBooking(bookingId, scheduledBookings);
+
+      if (!result.ok) {
+        socket.emit("requestAcceptanceError", {
+          message: result.reason,
+          bookingId,
+        });
+        return;
+      }
+
+      //get rating
+      const driver = await DriverModel.findById(driverId);
+      if (!driver) {
+        socket.emit("error", { message: "Driver not found" });
+        console.log("driver not found");
+        return;
+      }
+
+      // Get total completed bookings
+      const totalBookings = await BookingModel.countDocuments({
+        driverId: new mongoose.Types.ObjectId(driverId),
+        status: "completed",
+      });
+
+      // ✅ Add driver to requestedDrivers array
+      await BookingModel.findByIdAndUpdate(bookingId, {
+        $addToSet: { requestedDrivers: driverId },
+      });
+
+      console.log(`🚗 Driver ${driverId} offered for booking ${bookingId}`);
+
+      // Emit to customer
+      io.to(clientUserId).emit("acceptanceRequested", {
+        ...payload,
+        totalBookings,
+        rating: driver.rating.average,
+      });
+
+      // Confirm to driver
+      socket.emit("offer_sent", {
+        success: true,
+        message: "Your offer has been sent to the customer",
+      });
+    }
+  );
+};
+
+export const cancelOffer = (socket: CustomSocket, io: Server) => {
+  const on = withErrorHandling(socket);
+
+  on(
+    "cancelOffer",
+    async (payload: { clientId: string; id: string; bookingId: string }) => {
+      const { clientId, id, bookingId } = payload;
+
+      await BookingModel.updateOne(
+        { _id: bookingId },
+        { $pull: { requestedDrivers: id } }
+      );
+
+      socket.emit("offerCancelledConfirmed", { bookingId });
+
+      io.to(clientId).emit("offerCancelled", { driverId: id });
     }
   );
 };

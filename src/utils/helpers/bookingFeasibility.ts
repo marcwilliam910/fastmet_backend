@@ -69,6 +69,13 @@ export const canAcceptAsapBooking = async (
     return { ok: false, reason: "Booking not found." };
   }
 
+  if (booking.status !== "pending") {
+    return {
+      ok: false,
+      reason: "This booking is no longer available",
+    };
+  }
+
   const newStart = new Date(booking.bookingType.value);
   const newEnd = new Date(
     newStart.getTime() +
@@ -87,7 +94,7 @@ export const canAcceptAsapBooking = async (
       return {
         ok: false,
         reason:
-          "Cannot accept this ASAP booking because it conflicts with a scheduled booking.",
+          "Cannot offer service for this ASAP booking because it conflicts with a scheduled booking.",
       };
     }
 

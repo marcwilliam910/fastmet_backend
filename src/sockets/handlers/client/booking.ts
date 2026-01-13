@@ -5,11 +5,13 @@ import { CustomSocket } from "../../socket";
 import { calculateDistance } from "../../../utils/helpers/distanceCalculator";
 import { MAX_DRIVER_RADIUS_KM, SOCKET_ROOMS } from "../../../utils/constants";
 import UserModel from "../../../models/User";
+import { RequestBooking } from "../../../types/booking";
+import mongoose from "mongoose";
 
 export const handleBookingSocket = (socket: CustomSocket, io: Server) => {
   const on = withErrorHandling(socket);
 
-  on("request_booking", async (data) => {
+  on("request_booking", async (data: RequestBooking) => {
     console.log("📨 Booking request received:", data);
 
     /* ------------------------------------------------------------------ */
@@ -27,14 +29,18 @@ export const handleBookingSocket = (socket: CustomSocket, io: Server) => {
     if (!client) {
       socket.emit("booking_request_saved", {
         success: false,
-        error: "Client not found",
+        message: "Client not found",
       });
       return;
     }
 
     const temporaryRoom = `BOOKING_${booking._id}`;
 
-    socket.emit("booking_request_saved", { success: true });
+    socket.emit("booking_request_saved", {
+      success: true,
+      bookingId: booking._id,
+      message: "Booking request saved successfully",
+    });
     console.log("booking_request_saved called");
 
     /* ------------------------------------------------------------------ */
@@ -43,6 +49,7 @@ export const handleBookingSocket = (socket: CustomSocket, io: Server) => {
     const vehicleType = booking.selectedVehicle?.key;
 
     if (!vehicleType) {
+      console.log("Vehicle type not specified in booking");
       socket.emit("booking_request_failed", {
         message: "Vehicle type not specified in booking",
       });
@@ -151,7 +158,7 @@ export const handleBookingSocket = (socket: CustomSocket, io: Server) => {
     });
 
     console.log(
-      `📤 Booking ${booking._id} dispatched to ${nearbyDrivers.length} ${vehicleType} drivers`
+      `📤 Booking ${data.bookingRef} dispatched to ${nearbyDrivers.length} ${vehicleType} drivers`
     );
   });
 };
@@ -175,4 +182,134 @@ export const getDriverLocation = (socket: CustomSocket, io: Server) => {
       });
     }
   );
+};
+
+export const pickDriver = (socket: CustomSocket, io: Server) => {
+  const on = withErrorHandling(socket);
+
+  on(
+    "acceptDriver",
+    async (payload: { driverId: string; bookingId: string }) => {
+      const { driverId, bookingId } = payload;
+
+      console.log(
+        `🚗 Customer attempting to pick driver ${driverId} for booking ${bookingId}`
+      );
+
+      // First, check if the booking exists and is pending
+      const existingBooking = await BookingModel.findOne({
+        _id: bookingId,
+        status: "pending",
+      });
+
+      if (!existingBooking) {
+        console.log("Booking not found or already accepted");
+        socket.emit("error", {
+          message: "Booking not found or already accepted",
+        });
+        return;
+      }
+
+      // Check if driver was actually in the requested drivers list
+      const wasRequested = existingBooking.requestedDrivers.some(
+        (id) => id.toString() === driverId.toString()
+      );
+
+      if (!wasRequested) {
+        console.log("Driver offer was cancelled or not requested");
+        socket.emit("error", {
+          message:
+            "This offer is no longer available. The driver may have cancelled it.",
+        });
+        return;
+      }
+
+      // Now proceed with the update
+      const booking = await BookingModel.findOneAndUpdate(
+        {
+          _id: bookingId,
+          status: "pending",
+          requestedDrivers: new mongoose.Types.ObjectId(driverId),
+        },
+        {
+          driverId,
+          status: "active",
+          acceptedAt: new Date(),
+        },
+        { new: true }
+      );
+
+      if (!booking) {
+        // This would be a race condition - another driver accepted in the meantime
+        console.log("Booking not found");
+        socket.emit("error", {
+          message: "Sorry, booking not found",
+        });
+        return;
+      }
+      // ✅ Confirm to customer
+      socket.emit("driverAccepted", {
+        bookingId,
+      });
+
+      // ✅ Notify all drivers who offered
+      booking.requestedDrivers?.forEach((requestedDriverId) => {
+        const requestedDriverIdStr = requestedDriverId.toString();
+
+        if (requestedDriverIdStr === driverId) {
+          // Accepted driver
+          io.to(requestedDriverIdStr).emit("booking_confirmed", {
+            bookingId,
+          });
+        } else {
+          // Rejected drivers
+          io.to(requestedDriverIdStr).emit("booking_taken", {
+            bookingId,
+          });
+        }
+      });
+
+      //delete requested drivers
+      // await BookingModel.updateOne(
+      //   { _id: bookingId },
+      //   { $set: { requestedDrivers: [] } }
+      // );
+
+      console.log(`✅ Booking ${bookingId} assigned to driver ${driverId}`);
+    }
+  );
+};
+
+export const cancelBooking = (socket: CustomSocket, io: Server) => {
+  const on = withErrorHandling(socket);
+
+  on("cancelBookingRequest", async (payload: { bookingId: string }) => {
+    const { bookingId } = payload;
+
+    console.log(`🚗 Customer attempting to cancel booking ${bookingId}`);
+
+    const booking = await BookingModel.findOneAndUpdate(
+      { _id: bookingId, status: "pending" },
+      {
+        status: "cancelled",
+        cancelledAt: new Date(),
+      },
+      { new: true }
+    );
+
+    if (!booking) {
+      console.log("Booking not found");
+      socket.emit("error", {
+        message: "Booking not found",
+      });
+      return;
+    }
+
+    // ✅ Confirm to customer
+    socket.emit("bookingCancelled", {
+      bookingId,
+    });
+
+    console.log(`✅ Booking ${bookingId} cancelled`);
+  });
 };
