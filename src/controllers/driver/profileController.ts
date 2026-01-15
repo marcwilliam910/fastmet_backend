@@ -36,7 +36,7 @@ export const updateDriverProfile: RequestHandler = async (req, res) => {
     const result = await new Promise<any>((resolve, reject) => {
       const stream = cloudinary.uploader.upload_stream(
         {
-          folder: `fastmet/drivers/${driverId}`,
+          folder: `fastmet/drivers/${driverId}/profile_images`,
           public_id: "profile",
           overwrite: true,
           resource_type: "image",
@@ -138,7 +138,7 @@ export const uploadMultipleDriverImages: RequestHandler = async (req, res) => {
       return new Promise<{ type: string; url: string }>((resolve, reject) => {
         const stream = cloudinary.uploader.upload_stream(
           {
-            folder: `fastmet/drivers/${driverId}`,
+            folder: `fastmet/drivers/${driverId}/profile_images`,
             public_id: type,
             overwrite: true,
             resource_type: "image",

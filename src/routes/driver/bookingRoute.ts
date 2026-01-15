@@ -3,7 +3,7 @@ import { Router } from "express";
 import {
   // getActiveBooking,
   getBookings,
-  getTotalCompletedAndScheduledBookings,
+  getAllBookingsCount,
   uploadReceipt,
 } from "../../controllers/driver/bookingController";
 import { upload } from "../../utils/mutler";
@@ -14,7 +14,7 @@ const router = Router();
 // router.get("/active", getActiveBooking);
 
 router.get("/by-status", getBookings);
-router.get("/total", getTotalCompletedAndScheduledBookings);
-router.post("/receipt", upload.single("receipt"), uploadReceipt);
+router.get("/total", getAllBookingsCount);
+router.post("/receipt", upload.array("receipt"), uploadReceipt);
 
 export default router;

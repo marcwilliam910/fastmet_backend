@@ -225,11 +225,7 @@ export const setDriverAvailable = (socket: CustomSocket) => {
   const on = withErrorHandling(socket);
   on(
     "setAvailability",
-    async (data: {
-      bookingId: string;
-      proofImageUrl: string;
-      clientId: string;
-    }) => {
+    async (data: { bookingId: string; clientId: string }) => {
       socket.join(SOCKET_ROOMS.AVAILABLE);
       console.log(`✅ Driver ${socket.userId} joined AVAILABLE room`);
 
@@ -238,7 +234,6 @@ export const setDriverAvailable = (socket: CustomSocket) => {
         {
           status: "completed",
           completedAt: new Date(),
-          proofImageUrl: data.proofImageUrl,
         },
         { new: true }
       );

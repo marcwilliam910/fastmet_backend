@@ -35,7 +35,16 @@ export interface IBooking extends Document {
   updatedAt: Date;
   notificationSent: boolean;
   notifiedAt: Date | null;
-  proofImageUrl: string | null;
+  bookingImages: {
+    pickup: {
+      beforeImageUrl: string | null;
+      afterImageUrl: string | null;
+    };
+    dropoff: {
+      receiptImageUrl: string | null;
+      packageImageUrl: string | null;
+    };
+  };
   note: string;
   itemType: string | null;
   photos: string[];
@@ -132,9 +141,39 @@ const bookingSchema: Schema = new Schema<IBooking>(
       type: Date,
       default: null,
     },
-    proofImageUrl: {
-      type: String,
-      default: null,
+    bookingImages: {
+      type: {
+        pickup: {
+          beforeImageUrl: {
+            type: String,
+            default: null,
+          },
+          afterImageUrl: {
+            type: String,
+            default: null,
+          },
+        },
+        dropoff: {
+          receiptImageUrl: {
+            type: String,
+            default: null,
+          },
+          packageImageUrl: {
+            type: String,
+            default: null,
+          },
+        },
+      },
+      default: {
+        pickup: {
+          beforeImageUrl: null,
+          afterImageUrl: null,
+        },
+        dropoff: {
+          receiptImageUrl: null,
+          packageImageUrl: null,
+        },
+      },
     },
     note: {
       type: String,
