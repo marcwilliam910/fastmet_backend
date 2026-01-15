@@ -3,6 +3,7 @@ import DriverModel from "../../models/Driver";
 import { PreRegDriverModel } from "../../models/PreRegDriver";
 import { generateJWT } from "../../utils/helpers/jwt";
 import { normalizePHPhoneNumber } from "../../utils/helpers/phoneNumber";
+import mongoose from "mongoose";
 
 export const sendOTP: RequestHandler = async (req, res) => {
   const { phoneNumber } = req.body;
@@ -58,7 +59,9 @@ export const verifyOTP: RequestHandler = async (req, res) => {
   }
 
   // Simple: check if driver exists
-  let driver = await DriverModel.findOne({ phoneNumber: normalizedNumber });
+  let driver = await DriverModel.findOne({
+    phoneNumber: normalizedNumber,
+  }).populate("vehicle", "key");
   let status: "existing" | "pre-registered" | "new";
 
   // If not, create with phone number only (check pre-reg if needed)
@@ -72,9 +75,9 @@ export const verifyOTP: RequestHandler = async (req, res) => {
     driver = await DriverModel.create({
       phoneNumber: normalizedNumber,
       ...(preReg && {
-        name: preReg.name,
-        email: preReg.email,
-        vehicle: preReg.vehicle,
+        firstName: preReg.firstName,
+        lastName: preReg.lastName,
+        vehicle: new mongoose.Types.ObjectId(preReg.vehicle),
         preRegId: preReg._id,
       }),
     });
@@ -89,6 +92,15 @@ export const verifyOTP: RequestHandler = async (req, res) => {
     userType: "driver",
   });
 
+  // Safely get vehicle key
+  const vehicleKey =
+    driver &&
+    driver.vehicle &&
+    typeof driver.vehicle === "object" &&
+    "key" in driver.vehicle
+      ? (driver.vehicle as { key: string }).key
+      : null;
+
   return res.status(200).json({
     success: true,
     status,
@@ -99,9 +111,9 @@ export const verifyOTP: RequestHandler = async (req, res) => {
       license: driver.licenseNumber,
       profilePictureUrl: driver.profilePictureUrl,
       vehicleImage: driver.images.front,
-      name: driver.name,
-      email: driver.email,
-      vehicle: driver.vehicle,
+      firstName: driver.firstName,
+      lastName: driver.lastName,
+      vehicle: vehicleKey,
     },
   });
 };

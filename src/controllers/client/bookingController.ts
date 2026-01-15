@@ -7,7 +7,8 @@ import DriverModel, { IDriverRating } from "../../models/Driver";
 
 export interface PopulatedDriver {
   _id: mongoose.Types.ObjectId;
-  name: string;
+  firstName: string;
+  lastName: string;
   rating: IDriverRating;
   profilePictureUrl: string;
 }
@@ -28,7 +29,7 @@ export const getBookingsByStatus: RequestHandler = async (req, res) => {
     customerId: new mongoose.Types.ObjectId(clientId),
     status,
   })
-    .populate("driverId", "_id name rating profilePictureUrl")
+    .populate("driverId", "_id firstName lastName rating profilePictureUrl")
     .sort({ createdAt: -1 })
     .skip((pageNum - 1) * limitNum)
     .limit(limitNum)
@@ -45,7 +46,7 @@ export const getBookingsByStatus: RequestHandler = async (req, res) => {
       driver: driver
         ? {
             id: driver._id,
-            name: driver.name,
+            name: driver.firstName + " " + driver.lastName,
             rating: driver.rating.average,
             profilePictureUrl: driver.profilePictureUrl,
           }
@@ -72,7 +73,7 @@ export const getBooking: RequestHandler = async (req, res) => {
     return res.status(400).json({ message: "Invalid booking ID format" });
   }
   const booking = await BookingModel.findById(bookingId)
-    .populate("driverId", "_id name rating profilePictureUrl")
+    .populate("driverId", "_id firstName lastName rating profilePictureUrl")
     .lean();
 
   if (!booking) {
@@ -87,7 +88,7 @@ export const getBooking: RequestHandler = async (req, res) => {
     driver: driver
       ? {
           id: driver._id,
-          name: driver.name,
+          name: driver.firstName + " " + driver.lastName,
           rating: driver.rating.average,
           profilePictureUrl: driver.profilePictureUrl,
         }

@@ -15,7 +15,12 @@ const PreRegDriverSchema = new Schema(
       trim: true,
       lowercase: true,
     },
-    name: {
+    firstName: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    lastName: {
       type: String,
       required: true,
       trim: true,

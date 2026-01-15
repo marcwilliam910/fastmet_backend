@@ -3,10 +3,21 @@ import DriverModel from "../../models/Driver";
 import cloudinary from "../../config/cloudinary";
 import Driver from "../../models/Driver";
 import { getUserId } from "../../utils/helpers/getUserId";
+import mongoose from "mongoose";
 
 export const updateDriverProfile: RequestHandler = async (req, res) => {
   const driverId = getUserId(req);
-  const { name, email, vehicle, license: licenseNumber } = req.body;
+  const {
+    firstName,
+    lastName,
+    vehicle,
+    license: licenseNumber,
+  } = req.body as {
+    firstName: string;
+    lastName: string;
+    vehicle: string;
+    license: string;
+  };
 
   // Validation
   if (!driverId) {
@@ -43,28 +54,16 @@ export const updateDriverProfile: RequestHandler = async (req, res) => {
   }
 
   // Find driver
-  const driver = await DriverModel.findById(driverId);
+  const driver = await DriverModel.findById(driverId).populate(
+    "vehicle",
+    "key"
+  );
 
   if (!driver) {
     return res.status(404).json({
       success: false,
       error: "Driver not found",
     });
-  }
-
-  // Check if email is being changed and is already taken
-  if (email && email !== driver.email) {
-    const existingEmail = await DriverModel.findOne({
-      email,
-      _id: { $ne: driverId },
-    });
-
-    if (existingEmail) {
-      return res.status(400).json({
-        success: false,
-        error: "Email is already taken",
-      });
-    }
   }
 
   // Check if license number is already taken
@@ -83,22 +82,31 @@ export const updateDriverProfile: RequestHandler = async (req, res) => {
   }
 
   // Update driver data
-  if (name) driver.name = name;
-  if (email) driver.email = email;
-  if (vehicle) driver.vehicle = vehicle;
+  if (firstName) driver.firstName = firstName;
+  if (lastName) driver.lastName = lastName;
+  if (vehicle) driver.vehicle = new mongoose.Types.ObjectId(vehicle);
   if (licenseNumber) driver.licenseNumber = licenseNumber;
   if (profilePictureUrl) driver.profilePictureUrl = profilePictureUrl;
   driver.registrationStep = 2;
 
   await driver.save();
 
+  // Safely get vehicle key
+  const vehicleKey =
+    driver &&
+    driver.vehicle &&
+    typeof driver.vehicle === "object" &&
+    "key" in driver.vehicle
+      ? (driver.vehicle as { key: string }).key
+      : null;
+
   return res.status(200).json({
     success: true,
     driver: {
       id: driver._id,
-      name: driver.name,
-      email: driver.email,
-      vehicle: driver.vehicle,
+      firstName: driver.firstName,
+      lastName: driver.lastName,
+      vehicle: vehicleKey,
       licenseNumber: driver.licenseNumber,
       profilePictureUrl: driver.profilePictureUrl,
     },

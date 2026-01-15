@@ -8,9 +8,9 @@ export interface IDriverRating {
 
 export interface IDriver extends Document {
   phoneNumber: string;
-  email?: string;
-  vehicle?: "car" | "motorcycle" | "truck" | "van";
-  name?: string;
+  vehicle: Types.ObjectId;
+  firstName: string;
+  lastName: string;
   rating: IDriverRating;
   birthDate?: Date;
   gender?: "male" | "female" | "other";
@@ -46,20 +46,17 @@ const driverSchema = new Schema<IDriver>(
       trim: true,
     },
 
-    email: {
-      type: String,
-      unique: true,
-      sparse: true,
-      trim: true,
-      lowercase: true,
-    },
-
     vehicle: {
-      type: String,
-      enum: ["car", "motorcycle", "truck", "van"],
+      type: Schema.Types.ObjectId,
+      ref: "VehicleType",
     },
 
-    name: {
+    firstName: {
+      type: String,
+      trim: true,
+    },
+
+    lastName: {
       type: String,
       trim: true,
     },
