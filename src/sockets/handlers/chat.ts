@@ -51,7 +51,15 @@ export function chatHandler(socket: CustomSocket, io: Server) {
 
   // SEND MESSAGE
   on("send_message", async (payload) => {
-    const { conversationId, senderId, text, image, receiverId, name } = payload;
+    const {
+      conversationId,
+      senderId,
+      text,
+      image,
+      receiverId,
+      name,
+      profilePictureUrl,
+    } = payload;
 
     if (socket.userId !== senderId) {
       socket.emit("message_error", { error: "Unauthorized" });
@@ -139,35 +147,14 @@ export function chatHandler(socket: CustomSocket, io: Server) {
       sender: name,
       message: text || "Sent an image",
       unreadConversationsCount, // Number of conversations with unread messages
+      conversationId,
+      profilePictureUrl,
     });
 
     console.log(
       `Message sent to conversation ${conversationId} and user ${receiverId}`
     );
   });
-
-  // MARK MESSAGES AS READ //no sender
-  // on("mark_as_read", async ({ conversationId }) => {
-  //   const updateField =
-  //     socket.userType === "client"
-  //       ? "unreadCount.client"
-  //       : "unreadCount.driver";
-
-  //   await ConversationModel.findByIdAndUpdate(conversationId, {
-  //     [updateField]: 0,
-  //   });
-
-  //   await MessageModel.updateMany(
-  //     {
-  //       conversationId,
-  //       senderId: { $ne: socket.userId },
-  //       read: false,
-  //     },
-  //     { read: true }
-  //   );
-
-  //   console.log(`Messages marked as read in ${conversationId}`);
-  // });
 
   // start up app
   on("get_unread_conversations_count", async () => {

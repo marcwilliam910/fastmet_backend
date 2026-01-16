@@ -11,6 +11,7 @@ export interface PopulatedDriver {
   lastName: string;
   rating: IDriverRating;
   profilePictureUrl: string;
+  phoneNumber: string;
 }
 
 export const getBookingsByStatus: RequestHandler = async (req, res) => {

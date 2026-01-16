@@ -2,7 +2,7 @@ import { withErrorHandling } from "../../../utils/socketWrapper";
 import { CustomSocket } from "../../socket";
 import BookingModel from "../../../models/Booking";
 import { calculateDistance } from "../../../utils/helpers/distanceCalculator";
-import { MAX_DRIVER_RADIUS_KM, SOCKET_ROOMS } from "../../../utils/constants";
+import { DRIVER_RADIUS_KM, SOCKET_ROOMS } from "../../../utils/constants";
 import mongoose from "mongoose";
 import UserModel from "../../../models/User";
 import {
@@ -79,7 +79,7 @@ export const toggleOnDuty = (socket: CustomSocket) => {
         //       lng: location.lng,
         //     }
         //   );
-        //   return distance <= MAX_DRIVER_RADIUS_KM;
+        //   return distance <= DRIVER_RADIUS_KM;
         // });
 
         // console.log(
@@ -194,7 +194,7 @@ export const updateDriverLocation = (socket: CustomSocket) => {
           lng: location.lng,
         }
       );
-      return distance <= MAX_DRIVER_RADIUS_KM;
+      return distance <= DRIVER_RADIUS_KM;
     });
 
     const formattedPendingBookings = nearbyBookings.map((booking) => {
@@ -283,7 +283,7 @@ export const setDriverAvailable = (socket: CustomSocket) => {
             lng: location.lng,
           }
         );
-        return distance <= MAX_DRIVER_RADIUS_KM;
+        return distance <= DRIVER_RADIUS_KM;
       });
 
       const formattedPendingBookings = nearbyBookings.map((booking) => {

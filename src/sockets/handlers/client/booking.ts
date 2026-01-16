@@ -3,7 +3,7 @@ import BookingModel from "../../../models/Booking";
 import { withErrorHandling } from "../../../utils/socketWrapper";
 import { CustomSocket } from "../../socket";
 import { calculateDistance } from "../../../utils/helpers/distanceCalculator";
-import { MAX_DRIVER_RADIUS_KM, SOCKET_ROOMS } from "../../../utils/constants";
+import { DRIVER_RADIUS_KM, SOCKET_ROOMS } from "../../../utils/constants";
 import UserModel from "../../../models/User";
 import { RequestBooking } from "../../../types/booking";
 import mongoose from "mongoose";
@@ -41,7 +41,6 @@ export const handleBookingSocket = (socket: CustomSocket, io: Server) => {
       bookingId: booking._id,
       message: "Booking request saved successfully",
     });
-    console.log("booking_request_saved called");
 
     /* ------------------------------------------------------------------ */
     /* 2. Vehicle filtering                                                */
@@ -57,112 +56,158 @@ export const handleBookingSocket = (socket: CustomSocket, io: Server) => {
     }
 
     const vehicleRoom = `VEHICLE_${vehicleType.toUpperCase()}`;
-
-    /* ------------------------------------------------------------------ */
-    /* 3. Fetch available drivers                                          */
-    /* ------------------------------------------------------------------ */
-    const availableDriverSockets = await io
-      .in(SOCKET_ROOMS.ON_DUTY)
-      .in(SOCKET_ROOMS.AVAILABLE)
-      .in(vehicleRoom)
-      .fetchSockets();
-
-    console.log(
-      `🔍 Found ${availableDriverSockets.length} available ${vehicleType} drivers`
-    );
-
-    /* ------------------------------------------------------------------ */
-    /* 4. Distance filtering + enrichment                                  */
-    /* ------------------------------------------------------------------ */
     const pickupCoords = {
       lat: booking.pickUp.coords.lat,
       lng: booking.pickUp.coords.lng,
     };
 
-    const nearbyDrivers = availableDriverSockets
-      .map((driverSocket: any) => {
-        const driverLocation = driverSocket.data.location;
+    /* ------------------------------------------------------------------ */
+    /* 3. Expanding radius search setup                                    */
+    /* ------------------------------------------------------------------ */
+    const INITIAL_RADIUS = DRIVER_RADIUS_KM; // 100m (starting radius)
+    const RADIUS_INCREMENT = 0.2; // 100m (increase per iteration)
+    const SEARCH_INTERVAL = 30000; // 30 seconds
+    const MAX_RADIUS = 7; // 7km
+    const MAX_ATTEMPTS = 35; // reaches 6.9km
 
-        if (!driverLocation) {
-          console.log(`⚠️ Driver ${driverSocket.data.userId} has no location`);
-          return null;
-        }
+    const notifiedDriverIds = new Set<string>();
+    let currentRadius = INITIAL_RADIUS;
+    let searchAttempts = 0;
+    let searchInterval: NodeJS.Timeout | null = null;
 
-        const distance = calculateDistance(pickupCoords, {
-          lat: driverLocation.lat,
-          lng: driverLocation.lng,
+    /* ------------------------------------------------------------------ */
+    /* 4. Search function                                                  */
+    /* ------------------------------------------------------------------ */
+    const searchForDrivers = async () => {
+      searchAttempts++;
+      console.log(
+        `🔍 Search attempt ${searchAttempts}: radius ${currentRadius}km`
+      );
+
+      // Fetch all available drivers
+      const availableDriverSockets = await io
+        .in(SOCKET_ROOMS.ON_DUTY)
+        .in(SOCKET_ROOMS.AVAILABLE)
+        .in(vehicleRoom)
+        .fetchSockets();
+
+      // Filter by distance and exclude already-notified drivers
+      const nearbyDrivers = availableDriverSockets
+        .map((driverSocket: any) => {
+          const driverLocation = driverSocket.data.location;
+          const driverId = driverSocket.data.userId;
+
+          // Skip if already notified
+          if (notifiedDriverIds.has(driverId)) {
+            return null;
+          }
+
+          if (!driverLocation) {
+            console.log(`⚠️ Driver ${driverId} has no location`);
+            return null;
+          }
+
+          const distance = calculateDistance(pickupCoords, {
+            lat: driverLocation.lat,
+            lng: driverLocation.lng,
+          });
+
+          // Check if within current radius
+          if (distance > currentRadius) return null;
+
+          return {
+            socket: driverSocket,
+            driverId,
+            distanceKm: Number(distance.toFixed(2)),
+          };
+        })
+        .filter(Boolean) as {
+        socket: any;
+        driverId: string;
+        distanceKm: number;
+      }[];
+
+      // Notify new drivers
+      if (nearbyDrivers.length > 0) {
+        nearbyDrivers.forEach(({ socket, driverId, distanceKm }) => {
+          // Join temporary room
+          socket.join(temporaryRoom);
+
+          // Mark as notified
+          notifiedDriverIds.add(driverId);
+
+          // Send booking request
+          socket.emit("new_booking_request", {
+            _id: booking._id,
+            bookingRef: booking.bookingRef,
+            client: {
+              id: client._id,
+              name: client.fullName,
+              profilePictureUrl: client.profilePictureUrl,
+              phoneNumber: client.phoneNumber,
+            },
+            pickUp: booking.pickUp,
+            dropOff: booking.dropOff,
+            bookingType: booking.bookingType,
+            routeData: booking.routeData,
+            selectedVehicle: booking.selectedVehicle,
+            addedServices: booking.addedServices,
+            paymentMethod: booking.paymentMethod,
+            note: booking.note,
+            itemType: booking.itemType,
+            photos: booking.photos,
+            distanceFromPickup: distanceKm,
+          });
         });
 
         console.log(
-          `📏 Driver ${driverSocket.data.userId} (${
-            driverSocket.data.vehicleType
-          }) is ${distance.toFixed(2)} km away`
+          `📤 Dispatched to ${nearbyDrivers.length} new drivers (radius: ${currentRadius}km, total notified: ${notifiedDriverIds.size})`
+        );
+      } else {
+        console.log(`📭 No new drivers found at ${currentRadius}km radius`);
+      }
+
+      // Expand radius for next iteration
+      currentRadius = Number((currentRadius + RADIUS_INCREMENT).toFixed(2));
+
+      // Stop conditions
+      if (currentRadius > MAX_RADIUS || searchAttempts >= MAX_ATTEMPTS) {
+        if (searchInterval) {
+          clearInterval(searchInterval);
+          searchInterval = null;
+        }
+
+        console.log(
+          `🛑 Stopped expanding search for booking ${booking.bookingRef} (Total drivers notified: ${notifiedDriverIds.size})`
         );
 
-        if (distance > MAX_DRIVER_RADIUS_KM) return null;
+        // Notify customer if no drivers found at all
+        if (notifiedDriverIds.size === 0) {
+          socket.emit("no_drivers_available", {
+            message: `No ${vehicleType} drivers available in your area`,
+          });
+        }
+      }
+    };
 
-        return {
-          socket: driverSocket,
-          distanceKm: Number(distance.toFixed(2)),
-        };
-      })
-      .filter(Boolean) as {
-      socket: any;
-      distanceKm: number;
-    }[];
+    /* ------------------------------------------------------------------ */
+    /* 5. Start search cycle                                               */
+    /* ------------------------------------------------------------------ */
+    // Immediate first search
+    await searchForDrivers();
 
-    if (nearbyDrivers.length === 0) {
-      socket.emit("no_drivers_available", {
-        message: `No ${vehicleType} drivers available in your area`,
-      });
-      return;
+    // Continue searching every 30 seconds if needed
+    if (currentRadius <= MAX_RADIUS && searchAttempts < MAX_ATTEMPTS) {
+      searchInterval = setInterval(searchForDrivers, SEARCH_INTERVAL);
+
+      // Store reference for cleanup
+      socket.data.activeBookingSearch = {
+        interval: searchInterval,
+        bookingId: booking._id,
+      };
     }
-
-    /* ------------------------------------------------------------------ */
-    /* 5. Join drivers to temporary room                                   */
-    /* ------------------------------------------------------------------ */
-    nearbyDrivers.forEach(({ socket }) => {
-      socket.join(temporaryRoom);
-    });
-
-    console.log(
-      `🚗 Added ${nearbyDrivers.length} ${vehicleType} drivers to room ${temporaryRoom}`
-    );
-
-    /* ------------------------------------------------------------------ */
-    /* 6. Emit booking (driver-specific payload)                            */
-    /* ------------------------------------------------------------------ */
-    nearbyDrivers.forEach(({ socket, distanceKm }) => {
-      socket.emit("new_booking_request", {
-        _id: booking._id,
-        bookingRef: booking.bookingRef,
-        client: {
-          id: client._id,
-          name: client.fullName,
-          profilePictureUrl: client.profilePictureUrl,
-          phoneNumber: client.phoneNumber,
-        },
-        pickUp: booking.pickUp,
-        dropOff: booking.dropOff,
-        bookingType: booking.bookingType,
-        routeData: booking.routeData,
-        selectedVehicle: booking.selectedVehicle,
-        addedServices: booking.addedServices,
-        paymentMethod: booking.paymentMethod,
-        note: booking.note,
-        itemType: booking.itemType,
-        photos: booking.photos,
-        // 🔑 driver-specific metric
-        distanceFromPickup: distanceKm,
-      });
-    });
-
-    console.log(
-      `📤 Booking ${data.bookingRef} dispatched to ${nearbyDrivers.length} ${vehicleType} drivers`
-    );
   });
 };
-
 export const getDriverLocation = (socket: CustomSocket, io: Server) => {
   socket.on(
     "getDriverLocation",
@@ -247,6 +292,16 @@ export const pickDriver = (socket: CustomSocket, io: Server) => {
         });
         return;
       }
+
+      // 🧹 Clear the expanding radius search interval
+      if (socket.data.activeBookingSearch?.bookingId === bookingId) {
+        clearInterval(socket.data.activeBookingSearch.interval);
+        socket.data.activeBookingSearch = null;
+        console.log(
+          `🛑 Stopped expanding search for booking ${bookingId} (driver accepted)`
+        );
+      }
+
       // ✅ Confirm to customer
       socket.emit("driverAccepted", {
         bookingId,
@@ -258,15 +313,21 @@ export const pickDriver = (socket: CustomSocket, io: Server) => {
 
         if (requestedDriverIdStr === driverId) {
           // Accepted driver
-          io.to(requestedDriverIdStr).emit("booking_confirmed", {
+          io.to(requestedDriverIdStr).emit("bookingConfirmed", {
             bookingId,
           });
         } else {
           // Rejected drivers
-          io.to(requestedDriverIdStr).emit("booking_taken", {
+          io.to(requestedDriverIdStr).emit("bookingTaken", {
             bookingId,
           });
         }
+      });
+
+      // Notify all drivers in temporary room who haven't offered yet
+      const temporaryRoom = `BOOKING_${bookingId}`;
+      io.to(temporaryRoom).emit("bookingExpired", {
+        bookingId,
       });
 
       //delete requested drivers
@@ -305,10 +366,27 @@ export const cancelBooking = (socket: CustomSocket, io: Server) => {
       return;
     }
 
+    // 🧹 Clear the expanding radius search interval
+    if (socket.data.activeBookingSearch?.bookingId === bookingId) {
+      clearInterval(socket.data.activeBookingSearch.interval);
+      socket.data.activeBookingSearch = null;
+      console.log(
+        `🛑 Stopped expanding search for booking ${bookingId} (cancelled)`
+      );
+    }
+
     // ✅ Confirm to customer
     socket.emit("bookingCancelled", {
       bookingId,
     });
+
+    // ✅ Notify all drivers in the temporary room
+    const temporaryRoom = `BOOKING_${bookingId}`;
+    io.to(temporaryRoom).emit("bookingCancelled", {
+      bookingId,
+    });
+
+    // Remove the requestedDrivers loop entirely
 
     console.log(`✅ Booking ${bookingId} cancelled`);
   });

@@ -1,4 +1,4 @@
-export const MAX_DRIVER_RADIUS_KM = 1; // 1km
+export const DRIVER_RADIUS_KM = 0.1; // 100m
 
 export const SOCKET_ROOMS = {
   ON_DUTY: "drivers:on_duty",

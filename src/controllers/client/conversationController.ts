@@ -22,7 +22,7 @@ export const getConversations: RequestHandler = async (req, res) => {
     .limit(limitNum)
     .populate({
       path: "driver", // field that references Driver model
-      select: "name profilePictureUrl phoneNumber", // select needed fields
+      select: "firstName lastName profilePictureUrl phoneNumber", // select needed fields
     })
     .lean(); // .lean() for plain JS object (optional, for better performance)
 
@@ -41,7 +41,7 @@ export const getConversationById: RequestHandler = async (req, res) => {
   const { conversationId } = req.params;
 
   const conversation = await ConversationModel.findById(conversationId)
-    .populate("driver", "name profilePictureUrl phoneNumber")
+    .populate("driver", "firstName lastName profilePictureUrl phoneNumber")
     .lean();
 
   if (!conversation) {
