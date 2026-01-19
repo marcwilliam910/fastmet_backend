@@ -64,7 +64,9 @@ export const initSocket = (server: any) => {
       socket.userId = decoded.id;
       socket.userType = decoded.userType;
       next();
-    } catch (err) {
+    } catch (err: any) {
+      console.log("❌ JWT Error:", err.message); // ADD THIS
+      console.log("Token that failed:", token.substring(0, 50) + "..."); // ADD THIS
       next(new Error("Authentication failed"));
     }
   });
@@ -101,7 +103,7 @@ export const initSocket = (server: any) => {
     }
 
     socket.on("disconnect", () => {
-      console.log(`User disconnected: ${socket.id}`);
+      console.log(`${socket.userType} disconnected: ${socket.id}`);
     });
   });
 

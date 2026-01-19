@@ -69,7 +69,7 @@ export const canAcceptAsapBooking = async (
     return { ok: false, reason: "Booking not found." };
   }
 
-  if (booking.status !== "pending") {
+  if (booking.status !== "searching") {
     return {
       ok: false,
       reason: "This booking is no longer available",

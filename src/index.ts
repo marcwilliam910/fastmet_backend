@@ -4,7 +4,7 @@ import http from "http";
 import dotenv from "dotenv";
 import mongoose from "mongoose";
 import { errorHandler } from "./middlewares/errorHandler";
-import { initSocket } from "./sockets/socket";
+import { getIO, initSocket } from "./sockets/socket";
 // client routes
 import bookingRoute from "./routes/client/bookingRoute";
 import profileClientRoute from "./routes/client/profileRoute";
@@ -24,6 +24,8 @@ import vehicleRoute from "./routes/vehicleRoute";
 import { authenticateJWT } from "./middlewares/verifyToken";
 import { startNotificationCron } from "./services/notificationCron";
 import { migrateVehicleServicesV2 } from "./migrate";
+import { startBookingCleanupCron } from "./services/bookingCleanupCron";
+import { restoreBookingTimers } from "./utils/helpers/timerCleanup";
 
 dotenv.config();
 
@@ -74,6 +76,10 @@ mongoose
       // console.log("⏰ Notification cron job initialized");
 
       // startTestNotificationCron();
+
+      const io = getIO();
+      startBookingCleanupCron(io);
+      restoreBookingTimers(io);
     });
   })
   .catch((err) => {

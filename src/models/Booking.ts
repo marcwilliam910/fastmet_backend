@@ -29,7 +29,13 @@ export interface IBooking extends Document {
   };
   paymentMethod: string; // "cash" | "online"
   addedServices: Service[];
-  status: string; // "pending" | "active" | "cancelled"
+  status:
+    | "pending"
+    | "searching"
+    | "scheduled"
+    | "active"
+    | "completed"
+    | "cancelled";
   completedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
@@ -50,6 +56,10 @@ export interface IBooking extends Document {
   photos: string[];
   driverRating: number | null;
   requestedDrivers: Schema.Types.ObjectId[];
+  cancelledAt: Date | null;
+  // for searching drivers
+  searchStep: number;
+  currentRadiusKm: number;
 }
 
 const bookingSchema: Schema = new Schema<IBooking>(
@@ -131,7 +141,19 @@ const bookingSchema: Schema = new Schema<IBooking>(
         _id: false,
       },
     ],
-    status: { type: String, required: true, default: "pending" },
+    status: {
+      type: String,
+      required: true,
+      default: "pending",
+      enum: [
+        "pending",
+        "searching",
+        "scheduled",
+        "active",
+        "completed",
+        "cancelled",
+      ],
+    },
     completedAt: { type: Date, default: null },
     notificationSent: {
       type: Boolean,
@@ -199,6 +221,19 @@ const bookingSchema: Schema = new Schema<IBooking>(
         ref: "Driver",
       },
     ],
+    cancelledAt: {
+      type: Date,
+      default: null,
+    },
+    searchStep: {
+      type: Number,
+      default: 0,
+    },
+
+    currentRadiusKm: {
+      type: Number,
+      default: 0.1, // 100 meters
+    },
   },
   { timestamps: true }
 );

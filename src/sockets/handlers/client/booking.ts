@@ -3,10 +3,16 @@ import BookingModel from "../../../models/Booking";
 import { withErrorHandling } from "../../../utils/socketWrapper";
 import { CustomSocket } from "../../socket";
 import { calculateDistance } from "../../../utils/helpers/distanceCalculator";
-import { DRIVER_RADIUS_KM, SOCKET_ROOMS } from "../../../utils/constants";
+import {
+  DRIVER_RADIUS_KM,
+  SEARCH_CONFIG,
+  SOCKET_ROOMS,
+} from "../../../utils/constants";
 import UserModel from "../../../models/User";
 import { RequestBooking } from "../../../types/booking";
 import mongoose from "mongoose";
+
+export const bookingTimers = new Map<string, NodeJS.Timeout>();
 
 export const handleBookingSocket = (socket: CustomSocket, io: Server) => {
   const on = withErrorHandling(socket);
@@ -15,11 +21,24 @@ export const handleBookingSocket = (socket: CustomSocket, io: Server) => {
     console.log("📨 Booking request received:", data);
 
     /* ------------------------------------------------------------------ */
-    /* 1. Save booking                                                     */
+    /* 1. Create booking (searching immediately)                           */
     /* ------------------------------------------------------------------ */
+    const vehicleType = data.selectedVehicle?.key;
+
+    if (!vehicleType || !SEARCH_CONFIG[vehicleType]) {
+      socket.emit("bookingRequestFailed", {
+        message: "Invalid vehicle type",
+      });
+      return;
+    }
+
+    const { initialRadiusKm } = SEARCH_CONFIG[vehicleType];
+
     const booking = await BookingModel.create({
       ...data,
-      status: "pending",
+      status: "searching",
+      searchStep: 1,
+      currentRadiusKm: initialRadiusKm,
     });
 
     const client = await UserModel.findById(booking.customerId)
@@ -27,93 +46,114 @@ export const handleBookingSocket = (socket: CustomSocket, io: Server) => {
       .lean();
 
     if (!client) {
-      socket.emit("booking_request_saved", {
-        success: false,
+      socket.emit("bookingRequestFailed", {
         message: "Client not found",
       });
       return;
     }
 
-    const temporaryRoom = `BOOKING_${booking._id}`;
-
-    socket.emit("booking_request_saved", {
+    socket.emit("bookingRequestSaved", {
       success: true,
       bookingId: booking._id,
       message: "Booking request saved successfully",
     });
 
     /* ------------------------------------------------------------------ */
-    /* 2. Vehicle filtering                                                */
+    /* 2. START 10-MINUTE ABSOLUTE TIMEOUT                                 */
     /* ------------------------------------------------------------------ */
-    const vehicleType = booking.selectedVehicle?.key;
+    const timeoutTimer = setTimeout(async () => {
+      console.log(`⏰ Booking ${booking._id} reached 10-minute timeout`);
 
-    if (!vehicleType) {
-      console.log("Vehicle type not specified in booking");
-      socket.emit("booking_request_failed", {
-        message: "Vehicle type not specified in booking",
-      });
-      return;
-    }
+      const freshBooking = await BookingModel.findById(booking._id);
 
+      if (freshBooking && freshBooking.status === "searching") {
+        // Delete the booking
+        await BookingModel.findByIdAndDelete(booking._id);
+
+        // Notify the customer
+        socket.emit("bookingExpired", {
+          message: "Your booking request has expired",
+        });
+
+        // Notify all drivers in the temporary room
+        const temporaryRoom = `BOOKING_${booking._id}`;
+        io.to(temporaryRoom).emit("bookingExpired", {
+          bookingId: booking._id,
+        });
+
+        // Cleanup room
+        const socketsInRoom = await io.in(temporaryRoom).fetchSockets();
+        socketsInRoom.forEach((s) => s.leave(temporaryRoom));
+
+        console.log(
+          `🗑️  Deleted booking ${booking._id} after 10 minutes timeout`
+        );
+      }
+
+      // Clean up timer
+      bookingTimers.delete(String(booking._id));
+    }, 10 * 60 * 1000); // 10 minutes
+
+    // Store the timer
+    bookingTimers.set(String(booking._id), timeoutTimer);
+    console.log(`⏱️  Started 10-minute timer for booking ${booking._id}`);
+
+    /* ------------------------------------------------------------------ */
+    /* 3. Vehicle config & search logic                                    */
+    /* ------------------------------------------------------------------ */
+    const { incrementKm, maxRadiusKm, intervalMs } = SEARCH_CONFIG[vehicleType];
     const vehicleRoom = `VEHICLE_${vehicleType.toUpperCase()}`;
+    const temporaryRoom = `BOOKING_${booking._id}`;
+
     const pickupCoords = {
       lat: booking.pickUp.coords.lat,
       lng: booking.pickUp.coords.lng,
     };
 
     /* ------------------------------------------------------------------ */
-    /* 3. Expanding radius search setup                                    */
+    /* 4. Recursive search step                                            */
     /* ------------------------------------------------------------------ */
-    const INITIAL_RADIUS = DRIVER_RADIUS_KM; // 100m (starting radius)
-    const RADIUS_INCREMENT = 0.2; // 100m (increase per iteration)
-    const SEARCH_INTERVAL = 30000; // 30 seconds
-    const MAX_RADIUS = 7; // 7km
-    const MAX_ATTEMPTS = 35; // reaches 6.9km
+    const driverList = new Set<string>();
+    const runSearchStep = async () => {
+      const freshBooking = await BookingModel.findById(booking._id);
 
-    const notifiedDriverIds = new Set<string>();
-    let currentRadius = INITIAL_RADIUS;
-    let searchAttempts = 0;
-    let searchInterval: NodeJS.Timeout | null = null;
+      if (!freshBooking || freshBooking.status !== "searching") {
+        return;
+      }
 
-    /* ------------------------------------------------------------------ */
-    /* 4. Search function                                                  */
-    /* ------------------------------------------------------------------ */
-    const searchForDrivers = async () => {
-      searchAttempts++;
+      const radiusKm = freshBooking.currentRadiusKm;
+
       console.log(
-        `🔍 Search attempt ${searchAttempts}: radius ${currentRadius}km`
+        `🔍 Search step ${freshBooking.searchStep} | radius ${radiusKm}km`
       );
 
-      // Fetch all available drivers
+      socket.emit("radiusExpansion", {
+        radiusKm,
+        attempt: freshBooking.searchStep,
+      });
+
       const availableDriverSockets = await io
         .in(SOCKET_ROOMS.ON_DUTY)
         .in(SOCKET_ROOMS.AVAILABLE)
         .in(vehicleRoom)
         .fetchSockets();
 
-      // Filter by distance and exclude already-notified drivers
-      const nearbyDrivers = availableDriverSockets
+      const newDrivers = availableDriverSockets
         .map((driverSocket: any) => {
           const driverLocation = driverSocket.data.location;
           const driverId = driverSocket.data.userId;
 
-          // Skip if already notified
-          if (notifiedDriverIds.has(driverId)) {
-            return null;
-          }
-
-          if (!driverLocation) {
-            console.log(`⚠️ Driver ${driverId} has no location`);
-            return null;
-          }
+          if (!driverLocation) return null;
+          if (driverList.has(driverId)) return null;
 
           const distance = calculateDistance(pickupCoords, {
             lat: driverLocation.lat,
             lng: driverLocation.lng,
           });
 
-          // Check if within current radius
-          if (distance > currentRadius) return null;
+          console.log(driverSocket.id + " = " + distance);
+
+          if (distance > radiusKm) return null;
 
           return {
             socket: driverSocket,
@@ -127,87 +167,64 @@ export const handleBookingSocket = (socket: CustomSocket, io: Server) => {
         distanceKm: number;
       }[];
 
-      // Notify new drivers
-      if (nearbyDrivers.length > 0) {
-        nearbyDrivers.forEach(({ socket, driverId, distanceKm }) => {
-          // Join temporary room
+      if (newDrivers.length > 0) {
+        newDrivers.map((d) => driverList.add(d.driverId));
+
+        newDrivers.forEach(({ socket, distanceKm }) => {
           socket.join(temporaryRoom);
 
-          // Mark as notified
-          notifiedDriverIds.add(driverId);
-
-          // Send booking request
           socket.emit("new_booking_request", {
-            _id: booking._id,
-            bookingRef: booking.bookingRef,
+            _id: freshBooking._id,
+            bookingRef: freshBooking.bookingRef,
             client: {
               id: client._id,
               name: client.fullName,
               profilePictureUrl: client.profilePictureUrl,
               phoneNumber: client.phoneNumber,
             },
-            pickUp: booking.pickUp,
-            dropOff: booking.dropOff,
-            bookingType: booking.bookingType,
-            routeData: booking.routeData,
-            selectedVehicle: booking.selectedVehicle,
-            addedServices: booking.addedServices,
-            paymentMethod: booking.paymentMethod,
-            note: booking.note,
-            itemType: booking.itemType,
-            photos: booking.photos,
+            pickUp: freshBooking.pickUp,
+            dropOff: freshBooking.dropOff,
+            bookingType: freshBooking.bookingType,
+            routeData: freshBooking.routeData,
+            selectedVehicle: freshBooking.selectedVehicle,
+            addedServices: freshBooking.addedServices,
+            paymentMethod: freshBooking.paymentMethod,
+            note: freshBooking.note,
+            itemType: freshBooking.itemType,
+            photos: freshBooking.photos,
             distanceFromPickup: distanceKm,
           });
         });
 
         console.log(
-          `📤 Dispatched to ${nearbyDrivers.length} new drivers (radius: ${currentRadius}km, total notified: ${notifiedDriverIds.size})`
+          `📤 Sent to ${newDrivers.length} drivers (radius ${radiusKm}km)`
         );
-      } else {
-        console.log(`📭 No new drivers found at ${currentRadius}km radius`);
       }
 
-      // Expand radius for next iteration
-      currentRadius = Number((currentRadius + RADIUS_INCREMENT).toFixed(2));
+      const nextRadius = Number((radiusKm + incrementKm).toFixed(2));
 
-      // Stop conditions
-      if (currentRadius > MAX_RADIUS || searchAttempts >= MAX_ATTEMPTS) {
-        if (searchInterval) {
-          clearInterval(searchInterval);
-          searchInterval = null;
-        }
-
+      if (nextRadius > maxRadiusKm) {
         console.log(
-          `🛑 Stopped expanding search for booking ${booking.bookingRef} (Total drivers notified: ${notifiedDriverIds.size})`
+          `🛑 Max radius reached for booking ${freshBooking.bookingRef}`
         );
-
-        // Notify customer if no drivers found at all
-        if (notifiedDriverIds.size === 0) {
-          socket.emit("no_drivers_available", {
-            message: `No ${vehicleType} drivers available in your area`,
-          });
-        }
+        return;
       }
+
+      await BookingModel.findByIdAndUpdate(freshBooking._id, {
+        $inc: { searchStep: 1 },
+        $set: { currentRadiusKm: nextRadius },
+      });
+
+      setTimeout(runSearchStep, intervalMs);
     };
 
     /* ------------------------------------------------------------------ */
-    /* 5. Start search cycle                                               */
+    /* 5. Start first search                                               */
     /* ------------------------------------------------------------------ */
-    // Immediate first search
-    await searchForDrivers();
-
-    // Continue searching every 30 seconds if needed
-    if (currentRadius <= MAX_RADIUS && searchAttempts < MAX_ATTEMPTS) {
-      searchInterval = setInterval(searchForDrivers, SEARCH_INTERVAL);
-
-      // Store reference for cleanup
-      socket.data.activeBookingSearch = {
-        interval: searchInterval,
-        bookingId: booking._id,
-      };
-    }
+    await runSearchStep();
   });
 };
+
 export const getDriverLocation = (socket: CustomSocket, io: Server) => {
   socket.on(
     "getDriverLocation",
@@ -241,7 +258,7 @@ export const pickDriver = (socket: CustomSocket, io: Server) => {
         `🚗 Customer attempting to pick driver ${driverId} for booking ${bookingId}`
       );
 
-      // First, check if the booking exists and is pending
+      // Check if the booking exists and is pending
       const existingBooking = await BookingModel.findOne({
         _id: bookingId,
         status: "pending",
@@ -269,7 +286,7 @@ export const pickDriver = (socket: CustomSocket, io: Server) => {
         return;
       }
 
-      // Now proceed with the update
+      // Update booking to active
       const booking = await BookingModel.findOneAndUpdate(
         {
           _id: bookingId,
@@ -285,7 +302,6 @@ export const pickDriver = (socket: CustomSocket, io: Server) => {
       );
 
       if (!booking) {
-        // This would be a race condition - another driver accepted in the meantime
         console.log("Booking not found");
         socket.emit("error", {
           message: "Sorry, booking not found",
@@ -293,49 +309,46 @@ export const pickDriver = (socket: CustomSocket, io: Server) => {
         return;
       }
 
-      // 🧹 Clear the expanding radius search interval
-      if (socket.data.activeBookingSearch?.bookingId === bookingId) {
-        clearInterval(socket.data.activeBookingSearch.interval);
-        socket.data.activeBookingSearch = null;
-        console.log(
-          `🛑 Stopped expanding search for booking ${bookingId} (driver accepted)`
-        );
+      /* ------------------------------------------------------------------ */
+      /* CLEAR THE TIMEOUT TIMER - Driver was accepted                      */
+      /* ------------------------------------------------------------------ */
+      const timer = bookingTimers.get(bookingId);
+      if (timer) {
+        clearTimeout(timer);
+        bookingTimers.delete(bookingId);
+        console.log(`⏹️  Cleared timeout timer for booking ${bookingId}`);
       }
 
-      // ✅ Confirm to customer
-      socket.emit("driverAccepted", {
-        bookingId,
-      });
+      /* ------------------------------------------------------------------ */
+      /* Notify customer and drivers                                        */
+      /* ------------------------------------------------------------------ */
+      socket.emit("driverAccepted", { bookingId });
 
-      // ✅ Notify all drivers who offered
       booking.requestedDrivers?.forEach((requestedDriverId) => {
         const requestedDriverIdStr = requestedDriverId.toString();
 
         if (requestedDriverIdStr === driverId) {
           // Accepted driver
-          io.to(requestedDriverIdStr).emit("bookingConfirmed", {
-            bookingId,
-          });
+          io.to(requestedDriverIdStr).emit("bookingConfirmed", { bookingId });
         } else {
           // Rejected drivers
-          io.to(requestedDriverIdStr).emit("bookingTaken", {
-            bookingId,
-          });
+          io.to(requestedDriverIdStr).emit("bookingTaken", { bookingId });
         }
       });
 
       // Notify all drivers in temporary room who haven't offered yet
       const temporaryRoom = `BOOKING_${bookingId}`;
-      io.to(temporaryRoom).emit("bookingExpired", {
-        bookingId,
-      });
+      io.to(temporaryRoom).emit("bookingExpired", { bookingId });
 
-      //delete requested drivers
-      // await BookingModel.updateOne(
-      //   { _id: bookingId },
-      //   { $set: { requestedDrivers: [] } }
-      // );
+      /* ------------------------------------------------------------------ */
+      /* CLEANUP: Remove all sockets from temporary room                    */
+      /* ------------------------------------------------------------------ */
+      const socketsInRoom = await io.in(temporaryRoom).fetchSockets();
+      socketsInRoom.forEach((s) => s.leave(temporaryRoom));
 
+      console.log(
+        `🧹 Cleared ${socketsInRoom.length} sockets from ${temporaryRoom}`
+      );
       console.log(`✅ Booking ${bookingId} assigned to driver ${driverId}`);
     }
   );
@@ -350,7 +363,7 @@ export const cancelBooking = (socket: CustomSocket, io: Server) => {
     console.log(`🚗 Customer attempting to cancel booking ${bookingId}`);
 
     const booking = await BookingModel.findOneAndUpdate(
-      { _id: bookingId, status: "pending" },
+      { _id: bookingId, status: "searching" },
       {
         status: "cancelled",
         cancelledAt: new Date(),
@@ -366,28 +379,33 @@ export const cancelBooking = (socket: CustomSocket, io: Server) => {
       return;
     }
 
-    // 🧹 Clear the expanding radius search interval
-    if (socket.data.activeBookingSearch?.bookingId === bookingId) {
-      clearInterval(socket.data.activeBookingSearch.interval);
-      socket.data.activeBookingSearch = null;
-      console.log(
-        `🛑 Stopped expanding search for booking ${bookingId} (cancelled)`
-      );
+    /* ------------------------------------------------------------------ */
+    /* CLEAR THE TIMEOUT TIMER - Booking was cancelled                    */
+    /* ------------------------------------------------------------------ */
+    const timer = bookingTimers.get(bookingId);
+    if (timer) {
+      clearTimeout(timer);
+      bookingTimers.delete(bookingId);
+      console.log(`⏹️  Cleared timeout timer for booking ${bookingId}`);
     }
 
-    // ✅ Confirm to customer
-    socket.emit("bookingCancelled", {
-      bookingId,
-    });
+    /* ------------------------------------------------------------------ */
+    /* Notify customer and drivers                                        */
+    /* ------------------------------------------------------------------ */
+    socket.emit("bookingCancelled", { bookingId });
 
-    // ✅ Notify all drivers in the temporary room
     const temporaryRoom = `BOOKING_${bookingId}`;
-    io.to(temporaryRoom).emit("bookingCancelled", {
-      bookingId,
-    });
+    io.to(temporaryRoom).emit("bookingCancelled", { bookingId });
 
-    // Remove the requestedDrivers loop entirely
+    /* ------------------------------------------------------------------ */
+    /* CLEANUP: Remove all sockets from temporary room                    */
+    /* ------------------------------------------------------------------ */
+    const socketsInRoom = await io.in(temporaryRoom).fetchSockets();
+    socketsInRoom.forEach((s) => s.leave(temporaryRoom));
 
+    console.log(
+      `🧹 Cleared ${socketsInRoom.length} sockets from ${temporaryRoom}`
+    );
     console.log(`✅ Booking ${bookingId} cancelled`);
   });
 };
