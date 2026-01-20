@@ -22,10 +22,10 @@ export interface IDriver extends Document {
   images: {
     selfie?: string;
     selfieWithLicense?: string;
-    front?: string;
-    sideLeft?: string;
-    sideRight?: string;
-    back?: string;
+    frontView?: string;
+    sideLeftView?: string;
+    sideRightView?: string;
+    backView?: string;
     or?: string;
     cr?: string;
     engine?: string;
@@ -116,10 +116,10 @@ const driverSchema = new Schema<IDriver>(
       selfieWithLicense: { type: String, default: null },
 
       // Step 2 – Vehicle Exterior
-      front: { type: String, default: null },
-      sideLeft: { type: String, default: null },
-      sideRight: { type: String, default: null },
-      back: { type: String, default: null },
+      frontView: { type: String, default: null },
+      sideLeftView: { type: String, default: null },
+      sideRightView: { type: String, default: null },
+      backView: { type: String, default: null },
 
       // Step 3 – Documents + Engine + Chassis
       or: { type: String, default: null },
@@ -136,7 +136,7 @@ const driverSchema = new Schema<IDriver>(
       default: true,
     },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 const DriverModel = model<IDriver>("Driver", driverSchema);

@@ -15,9 +15,9 @@ export const SEARCH_CONFIG: Record<
   }
 > = {
   motorcycle: {
-    initialRadiusKm: 15, // 100m
-    incrementKm: 0.1,
-    maxRadiusKm: 20,
+    initialRadiusKm: 15, // 0.3
+    incrementKm: 1, //0.1
+    maxRadiusKm: 30, //5
     intervalMs: 5_000,
   },
 

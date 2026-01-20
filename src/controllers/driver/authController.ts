@@ -101,6 +101,8 @@ export const verifyOTP: RequestHandler = async (req, res) => {
       ? (driver.vehicle as { key: string }).key
       : null;
 
+  console.log("vehicle key: ", vehicleKey);
+
   return res.status(200).json({
     success: true,
     status,
@@ -110,7 +112,7 @@ export const verifyOTP: RequestHandler = async (req, res) => {
       phoneNumber: driver.phoneNumber,
       license: driver.licenseNumber,
       profilePictureUrl: driver.profilePictureUrl,
-      vehicleImage: driver.images.front,
+      vehicleImage: driver.images.frontView,
       firstName: driver.firstName,
       lastName: driver.lastName,
       vehicle: vehicleKey,

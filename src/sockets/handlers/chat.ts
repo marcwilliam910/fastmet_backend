@@ -5,6 +5,10 @@ import ConversationModel from "../../models/Conversation";
 import MessageModel from "../../models/Message";
 import cloudinary from "../../config/cloudinary";
 import { createConversationId } from "../../utils/helpers/createConversationId";
+import {
+  getSecureFolderId,
+  uploadBase64ImageToCloudinary,
+} from "../../services/cloudinaryService";
 
 export function chatHandler(socket: CustomSocket, io: Server) {
   const on = withErrorHandling(socket);
@@ -15,7 +19,7 @@ export function chatHandler(socket: CustomSocket, io: Server) {
     socket.join(conversationId);
 
     console.log(
-      `${socket.userType} ${socket.userId} joined room: ${conversationId}`
+      `${socket.userType} ${socket.userId} joined room: ${conversationId}`,
     );
 
     await ConversationModel.findByIdAndUpdate(
@@ -25,7 +29,7 @@ export function chatHandler(socket: CustomSocket, io: Server) {
         client: clientId,
         driver: driverId,
       },
-      { upsert: true, new: true }
+      { upsert: true, new: true },
     );
 
     socket.emit("room_joined", {
@@ -68,30 +72,15 @@ export function chatHandler(socket: CustomSocket, io: Server) {
 
     const senderType = socket.userType;
     let imageUrl = null;
+
     // Upload image to Cloudinary if provided
     if (image) {
       try {
-        // Extract base64 data from the image URI (if it's data URI)
-        const base64Data = image.replace(/^data:image\/\w+;base64,/, "");
-        const buffer = Buffer.from(base64Data, "base64");
-
-        // Upload to Cloudinary
-        const result = await new Promise<any>((resolve, reject) => {
-          const stream = cloudinary.uploader.upload_stream(
-            {
-              folder: `fastmet/chats/${conversationId}`,
-              resource_type: "image",
-            },
-            (error, result) => {
-              if (error || !result) reject(error);
-              else resolve(result);
-            }
-          );
-
-          stream.end(buffer);
-        });
-
-        imageUrl = result.secure_url;
+        imageUrl = await uploadBase64ImageToCloudinary(
+          image,
+          `fastmet/chats/${getSecureFolderId(senderId)}`,
+          "default", // Uses default config: 1200px, 80% quality
+        );
       } catch (error) {
         console.error("Image upload failed:", error);
         socket.emit("message_error", { error: "Image upload failed" });
@@ -152,7 +141,7 @@ export function chatHandler(socket: CustomSocket, io: Server) {
     });
 
     console.log(
-      `Message sent to conversation ${conversationId} and user ${receiverId}`
+      `Message sent to conversation ${conversationId} and user ${receiverId}`,
     );
   });
 
@@ -181,7 +170,7 @@ export function chatHandler(socket: CustomSocket, io: Server) {
       {
         [updateField]: 0, // Reset unread count for the joining user
       },
-      { new: true }
+      { new: true },
     );
 
     // Get updated count after resetting

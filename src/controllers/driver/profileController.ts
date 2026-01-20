@@ -4,6 +4,11 @@ import cloudinary from "../../config/cloudinary";
 import Driver from "../../models/Driver";
 import { getUserId } from "../../utils/helpers/getUserId";
 import mongoose from "mongoose";
+import {
+  getSecureFolderId,
+  uploadImageToCloudinary,
+  uploadMultipleImagesWithPublicIds,
+} from "../../services/cloudinaryService";
 
 export const updateDriverProfile: RequestHandler = async (req, res) => {
   const driverId = getUserId(req);
@@ -33,31 +38,14 @@ export const updateDriverProfile: RequestHandler = async (req, res) => {
 
   // Upload to Cloudinary if file exists
   if (file) {
-    const result = await new Promise<any>((resolve, reject) => {
-      const stream = cloudinary.uploader.upload_stream(
-        {
-          folder: `fastmet/drivers/${driverId}/profile_images`,
-          public_id: "profile",
-          overwrite: true,
-          resource_type: "image",
-        },
-        (error, result) => {
-          if (error || !result) reject(error);
-          else resolve(result);
-        }
-      );
-
-      stream.end(file.buffer);
+    profilePictureUrl = await uploadImageToCloudinary(file.buffer, {
+      folder: `fastmet/drivers/${getSecureFolderId(driverId)}/profile_images`,
+      publicId: "profile",
     });
-
-    profilePictureUrl = result.secure_url;
   }
 
   // Find driver
-  const driver = await DriverModel.findById(driverId).populate(
-    "vehicle",
-    "key"
-  );
+  const driver = await DriverModel.findById(driverId);
 
   if (!driver) {
     return res.status(404).json({
@@ -91,9 +79,11 @@ export const updateDriverProfile: RequestHandler = async (req, res) => {
 
   await driver.save();
 
+  // Re-populate vehicle after save
+  await driver.populate("vehicle", "key");
+
   // Safely get vehicle key
   const vehicleKey =
-    driver &&
     driver.vehicle &&
     typeof driver.vehicle === "object" &&
     "key" in driver.vehicle
@@ -131,33 +121,13 @@ export const uploadMultipleDriverImages: RequestHandler = async (req, res) => {
 
     const files = req.files as Express.Multer.File[];
 
-    // Parallel uploads with Promise.all
-    const uploadPromises = files.map((file, index) => {
-      const type = imageTypes[index];
-
-      return new Promise<{ type: string; url: string }>((resolve, reject) => {
-        const stream = cloudinary.uploader.upload_stream(
-          {
-            folder: `fastmet/drivers/${driverId}/profile_images`,
-            public_id: type,
-            overwrite: true,
-            resource_type: "image",
-          },
-          (error, result) => {
-            if (error || !result) {
-              reject(error);
-            } else {
-              resolve({ type, url: result.secure_url });
-            }
-          }
-        );
-
-        stream.end(file.buffer);
-      });
-    });
-
-    // Wait for all uploads to complete
-    const uploadResults = await Promise.all(uploadPromises);
+    // Use the reusable service for multiple images with custom publicIds
+    const uploadResults = await uploadMultipleImagesWithPublicIds(
+      files,
+      `fastmet/drivers/${getSecureFolderId(driverId)}/profile_images`,
+      imageTypes,
+      "profile", // Uses profile config: 500px, 85% quality
+    );
 
     // Convert array to object
     const uploadedResults: Record<string, string> = {};
@@ -175,7 +145,7 @@ export const uploadMultipleDriverImages: RequestHandler = async (req, res) => {
     await Driver.findByIdAndUpdate(
       driverId,
       { ...updateObject, registrationStep: step },
-      { new: true }
+      { new: true },
     );
 
     return res.json({

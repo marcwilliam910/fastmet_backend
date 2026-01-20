@@ -4,6 +4,10 @@ import mongoose from "mongoose";
 import { getUserId } from "../../utils/helpers/getUserId";
 import sharp from "sharp";
 import cloudinary from "../../config/cloudinary";
+import {
+  getSecureFolderId,
+  uploadWatermarkedImageToCloudinary,
+} from "../../services/cloudinaryService";
 
 export const getBookings: RequestHandler = async (req, res) => {
   const driverId = getUserId(req);
@@ -20,7 +24,7 @@ export const getBookings: RequestHandler = async (req, res) => {
   const lateThresholdMinutes = 30;
 
   const lateBoundary = new Date(
-    now.getTime() - lateThresholdMinutes * 60 * 1000
+    now.getTime() - lateThresholdMinutes * 60 * 1000,
   );
 
   const query: any = {
@@ -72,7 +76,7 @@ export const getAllBookingsCount: RequestHandler = async (req, res) => {
   const lateThresholdMinutes = 30;
 
   const lateBoundary = new Date(
-    now.getTime() - lateThresholdMinutes * 60 * 1000
+    now.getTime() - lateThresholdMinutes * 60 * 1000,
   );
 
   const totalScheduledBookings = await BookingModel.countDocuments({
@@ -184,11 +188,11 @@ export const uploadReceipt: RequestHandler = async (req, res) => {
                 fill="url(#bgGradient)"/>
           
           <g transform="translate(${padding}, ${
-        height - lineHeight * 2 - padding * 2
-      })">
+            height - lineHeight * 2 - padding * 2
+          })">
             <circle cx="${iconSize / 2}" cy="${iconSize / 2}" r="${
-        iconSize / 2.5
-      }" 
+              iconSize / 2.5
+            }" 
                     fill="#e4483cff" opacity="0.9"/>
             <text x="${iconSize / 2}" y="${iconSize / 2 + iconSize / 4}" 
                   class="icon" fill="white" text-anchor="middle">📍</text>
@@ -198,11 +202,11 @@ export const uploadReceipt: RequestHandler = async (req, res) => {
           </g>
           
           <g transform="translate(${padding}, ${
-        height - lineHeight - padding
-      })">
+            height - lineHeight - padding
+          })">
             <circle cx="${iconSize / 2}" cy="${iconSize / 2}" r="${
-        iconSize / 2.5
-      }" 
+              iconSize / 2.5
+            }" 
                     fill="#4A90E2" opacity="0.9"/>
             <text x="${iconSize / 2}" y="${iconSize / 2 + iconSize / 4}" 
                   class="icon" fill="white" text-anchor="middle">🕐</text>
@@ -215,8 +219,8 @@ export const uploadReceipt: RequestHandler = async (req, res) => {
             width - padding
           }, ${padding})" filter="url(#subtleShadow)">
             <rect x="-${fontSize * 8}" y="0" width="${fontSize * 8}" height="${
-        fontSize * 2
-      }" 
+              fontSize * 2
+            }" 
                   fill="rgba(76, 175, 80, 0.9)" rx="${fontSize / 2}"/>
             <text x="-${fontSize * 4}" y="${fontSize * 1.3}" 
                   class="text" fill="white" text-anchor="middle" font-weight="600">✓ VERIFIED</text>
@@ -224,44 +228,24 @@ export const uploadReceipt: RequestHandler = async (req, res) => {
         </svg>
       `;
 
-      // Composite watermark onto image
-      const watermarkedImage = await sharp(imageBuffer)
-        .composite([
-          {
-            input: Buffer.from(watermarkSVG),
-          },
-        ])
-        .jpeg({ quality: 92 })
-        .toBuffer();
-
       const publicId =
         typeof file.originalname === "string" && file.originalname.length
           ? `${type}_${file.originalname.replace(
               /\.[^/.]+$/,
-              ""
+              "",
             )}_${Date.now()}`
           : `${type}_${Date.now()}`;
 
-      // Upload to Cloudinary
-      const result = await new Promise<any>((resolve, reject) => {
-        const stream = cloudinary.uploader.upload_stream(
-          {
-            folder: `fastmet/drivers/${driverId}/bookings/${bookingId}`,
-            public_id: publicId,
-            overwrite: false,
-            resource_type: "image",
-          },
-          (error, result) => {
-            if (error || !result) {
-              reject(error || new Error("Upload failed"));
-            } else {
-              resolve(result);
-            }
-          }
-        );
-
-        stream.end(watermarkedImage);
-      });
+      // Upload with optimization using reusable service
+      const result = await uploadWatermarkedImageToCloudinary(
+        imageBuffer,
+        watermarkSVG,
+        {
+          folder: `fastmet/drivers/${getSecureFolderId(driverId)}/bookings/${bookingId}`,
+          publicId,
+          quality: 85, // Optimized quality (was 92)
+        },
+      );
 
       return {
         success: true,
@@ -281,7 +265,7 @@ export const uploadReceipt: RequestHandler = async (req, res) => {
       // Determine if this is pickup or dropoff based on types
       const isPickup = typesArray.some((t) => t.includes("pickup"));
       const isDropoff = typesArray.some(
-        (t) => t.includes("receipt") || t.includes("package")
+        (t) => t.includes("receipt") || t.includes("package"),
       );
 
       if (isPickup) {
@@ -292,7 +276,7 @@ export const uploadReceipt: RequestHandler = async (req, res) => {
             "bookingImages.pickup.beforeImageUrl": results[0].url,
             "bookingImages.pickup.afterImageUrl": results[1].url,
           },
-          { new: true }
+          { new: true },
         );
       } else if (isDropoff) {
         // Update dropoff images
@@ -302,7 +286,7 @@ export const uploadReceipt: RequestHandler = async (req, res) => {
             "bookingImages.dropoff.receiptImageUrl": results[0].url,
             "bookingImages.dropoff.packageImageUrl": results[1].url,
           },
-          { new: true }
+          { new: true },
         );
       }
     }

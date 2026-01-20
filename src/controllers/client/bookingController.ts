@@ -4,6 +4,10 @@ import mongoose, { Types } from "mongoose";
 import { getUserId } from "../../utils/helpers/getUserId";
 import cloudinary from "../../config/cloudinary";
 import DriverModel, { IDriverRating } from "../../models/Driver";
+import {
+  getSecureFolderId,
+  uploadMultipleImagesToCloudinary,
+} from "../../services/cloudinaryService";
 
 export interface PopulatedDriver {
   _id: mongoose.Types.ObjectId;
@@ -152,25 +156,12 @@ export const uploadBookingImage: RequestHandler = async (req, res) => {
 
     const files = req.files as Express.Multer.File[];
 
-    // Parallel uploads instead of loop
-    const uploadPromises = files.map((file, index) => {
-      return new Promise<string>((resolve, reject) => {
-        const stream = cloudinary.uploader.upload_stream(
-          {
-            folder: `fastmet/clients/${clientId}/bookings/${bookingRef}`,
-            public_id: `${Date.now()}-${index}`,
-            resource_type: "image",
-          },
-          (error, result) => {
-            if (error || !result) reject(error);
-            else resolve(result.secure_url);
-          }
-        );
-        stream.end(file.buffer);
-      });
-    });
-
-    const images = await Promise.all(uploadPromises);
+    // Upload with compression using the reusable service
+    const images = await uploadMultipleImagesToCloudinary(
+      files,
+      `fastmet/clients/${getSecureFolderId(clientId)}/bookings/${bookingRef}`,
+      "booking", // Uses booking config: 1200px, 80% quality
+    );
 
     return res.json({
       success: true,
@@ -264,7 +255,7 @@ export const updatePartialBookingData: RequestHandler = async (req, res) => {
   const updatedBooking = await BookingModel.findOneAndUpdate(
     { _id: bookingId },
     { $set: updateData },
-    { new: true }
+    { new: true },
   );
 
   res.status(200).json(updatedBooking);
