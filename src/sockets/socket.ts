@@ -2,8 +2,8 @@ import { Server, Socket } from "socket.io";
 import {
   cancelBooking,
   getDriverLocation,
-  handleBookingSocket,
   pickDriver,
+  requestAsapBooking,
 } from "./handlers/client/booking";
 import {
   cancelOffer,
@@ -74,7 +74,7 @@ export const initSocket = (server: any) => {
   io.on("connection", async (s) => {
     const socket = s as CustomSocket;
     console.log(
-      `New ${socket.userType} connected: ${socket.id} (User: ${socket.userId})`
+      `New ${socket.userType} connected: ${socket.id} (User: ${socket.userId})`,
     );
 
     // Join user's personal room (for targeted emissions)
@@ -96,7 +96,7 @@ export const initSocket = (server: any) => {
 
     // Client-specific handlers
     if (socket.userType === "client") {
-      handleBookingSocket(socket, io);
+      requestAsapBooking(socket, io);
       getDriverLocation(socket, io);
       pickDriver(socket, io);
       cancelBooking(socket, io);

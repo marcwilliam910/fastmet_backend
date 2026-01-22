@@ -11,103 +11,103 @@ import mongoose from "mongoose";
 import { sendNotifToClient } from "../../../utils/pushNotifications";
 import DriverModel from "../../../models/Driver";
 
-export const acceptBooking = (socket: CustomSocket, io: Server) => {
-  const on = withErrorHandling(socket);
+// export const acceptBooking = (socket: CustomSocket, io: Server) => {
+//   const on = withErrorHandling(socket);
 
-  on(
-    "acceptBooking",
-    async ({
-      bookingId,
-      driverId,
-      type,
-    }: {
-      bookingId: string;
-      driverId: string;
-      type: "asap" | "schedule" | "pooling";
-    }) => {
-      if (!bookingId || !driverId)
-        throw new Error("bookingId and driverId is required");
+//   on(
+//     "acceptBooking",
+//     async ({
+//       bookingId,
+//       driverId,
+//       type,
+//     }: {
+//       bookingId: string;
+//       driverId: string;
+//       type: "asap" | "schedule" | "pooling"; //remove ASAP
+//     }) => {
+//       if (!bookingId || !driverId)
+//         throw new Error("bookingId and driverId is required");
 
-      // avoid overlapping scheduled bookings
-      const scheduledBookings = await BookingModel.find({
-        driverId: driverId,
-        status: "scheduled",
-        "bookingType.type": "schedule",
-      });
+//       // avoid overlapping scheduled bookings
+//       const scheduledBookings = await BookingModel.find({
+//         driverId: driverId,
+//         status: "scheduled",
+//         "bookingType.type": "schedule",
+//       });
 
-      if (type === "schedule") {
-        const result = await canAcceptScheduledBooking(
-          bookingId,
-          scheduledBookings
-        );
+//       if (type === "schedule") {
+//         const result = await canAcceptScheduledBooking(
+//           bookingId,
+//           scheduledBookings,
+//         );
 
-        if (!result.ok) {
-          socket.emit("acceptBookingError", {
-            message: result.reason,
-          });
-          return;
-        }
-      }
-      if (type === "asap") {
-        const result = await canAcceptAsapBooking(bookingId, scheduledBookings);
+//         if (!result.ok) {
+//           socket.emit("acceptBookingError", {
+//             message: result.reason,
+//           });
+//           return;
+//         }
+//       }
+//       if (type === "asap") {
+//         const result = await canAcceptAsapBooking(bookingId, scheduledBookings);
 
-        if (!result.ok) {
-          socket.emit("acceptBookingError", {
-            message: result.reason,
-          });
-          return;
-        }
-      }
+//         if (!result.ok) {
+//           socket.emit("acceptBookingError", {
+//             message: result.reason,
+//           });
+//           return;
+//         }
+//       }
 
-      const booking = await BookingModel.findOneAndUpdate(
-        { _id: bookingId, status: "pending" },
+//       const booking = await BookingModel.findOneAndUpdate(
+//         { _id: bookingId, status: "pending" },
 
-        {
-          driverId: driverId,
-          status: type === "asap" ? "active" : "scheduled",
-        },
-        { new: true }
-      );
+//         {
+//           driverId: driverId,
+//           status: type === "asap" ? "active" : "scheduled",
+//         },
+//         { new: true },
+//       );
 
-      if (!booking) {
-        socket.emit("acceptBookingError", {
-          message: "This booking has already been accepted by another driver.",
-        });
-        return;
-      }
+//       if (!booking) {
+//         socket.emit("acceptBookingError", {
+//           message: "This booking has already been accepted by another driver.",
+//         });
+//         return;
+//       }
 
-      const room = `BOOKING_${bookingId}`;
+//       const room = `BOOKING_${bookingId}`;
 
-      // ✅ Mark driver as unavailable if they accepted an ASAP booking (on a trip now)
-      if (type === "asap") {
-        socket.leave(SOCKET_ROOMS.AVAILABLE);
-        console.log(
-          `✅ Driver ${socket.userId} accepted booking ${bookingId} and is now UNAVAILABLE`
-        );
-      }
+//       // ✅ Mark driver as unavailable if they accepted an ASAP booking (on a trip now)
+//       if (type === "asap") {
+//         socket.leave(SOCKET_ROOMS.AVAILABLE);
+//         console.log(
+//           `✅ Driver ${socket.userId} accepted booking ${bookingId} and is now UNAVAILABLE`,
+//         );
+//       }
 
-      // Notify the client who booked
-      // for in-app toast
-      io.to(booking.customerId.toString()).emit("bookingAccepted", {
-        customerId: booking.customerId,
-      });
-      // for push notif
-      await sendNotifToClient(
-        booking.customerId.toString(),
-        "📦 Booking Accepted!",
-        "Your booking request has been accepted by a driver. Tap to view details."
-      );
+//       // Notify the client who booked
+//       // for in-app toast
+//       io.to(booking.customerId.toString()).emit("bookingAccepted", {
+//         customerId: booking.customerId,
+//       });
+//       // for push notif
+//       await sendNotifToClient(
+//         booking.customerId.toString(),
+//         "📦 Booking Accepted!",
+//         "Your booking request has been accepted by a driver. Tap to view details.",
+//       );
 
-      // Confirm to driver
-      socket.emit("acceptanceConfirmed", { bookingId, bookingType: type });
+//       // Confirm to driver
+//       socket.emit("acceptanceConfirmed", { bookingId, bookingType: type });
 
-      // Notify other drivers this booking is taken
-      io.to(room).emit("bookingTaken", { bookingId });
+//       // Notify other drivers this booking is taken
+//       io.to(room).emit("bookingTaken", { bookingId });
 
-      io.in(room).socketsLeave(room);
-    }
-  );
-};
+//       io.in(room).socketsLeave(room);
+//     },
+//   );
+// };
 
 export const driverLocation = (socket: CustomSocket, io: Server) => {
   socket.on(
@@ -127,7 +127,7 @@ export const driverLocation = (socket: CustomSocket, io: Server) => {
 
       // Send location back to the client
       io.to(clientUserId).emit("driverLocationResponse", { driverLoc });
-    }
+    },
   );
 };
 
@@ -193,7 +193,7 @@ export const handleStartScheduledTrip = (socket: CustomSocket, io: Server) => {
       if (minutesUntil > 15) {
         socket.emit("startScheduledTripError", {
           message: `Too early. You can start this trip ${Math.ceil(
-            minutesUntil - 15
+            minutesUntil - 15,
           )} minutes from now.`,
         });
         return;
@@ -206,7 +206,7 @@ export const handleStartScheduledTrip = (socket: CustomSocket, io: Server) => {
           $set: {
             status: "active",
           },
-        }
+        },
       );
 
       console.log(`✅ Trip ${bookingId} status changed: scheduled → active`);
@@ -236,7 +236,7 @@ export const handleStartScheduledTrip = (socket: CustomSocket, io: Server) => {
       //     message: "Your driver has started the trip and is on the way!",
       //   });
       // }
-    }
+    },
   );
 };
 
@@ -253,6 +253,7 @@ export const requestAcceptance = (socket: CustomSocket, io: Server) => {
       vehicleImage: string;
       distance: number;
       profilePicture: string;
+      type: "asap" | "schedule" | "pooling";
     }) => {
       const { id: driverId, bookingId, clientUserId } = payload;
 
@@ -293,19 +294,34 @@ export const requestAcceptance = (socket: CustomSocket, io: Server) => {
 
       console.log(`🚗 Driver ${driverId} offered for booking ${bookingId}`);
 
-      // Emit to customer
-      io.to(clientUserId).emit("acceptanceRequested", {
-        ...payload,
+      const driverPayload = {
+        id: driverId,
+        name: payload.name,
+        vehicleImage: payload.vehicleImage,
+        profilePicture: payload.profilePicture,
         totalBookings,
         rating: driver.rating.average,
-      });
+      };
 
-      // Confirm to driver
+      // Emit to customer add IF ASAP
+      if (payload.type === "asap") {
+        io.to(clientUserId).emit("acceptanceRequestedASAP", {
+          ...driverPayload,
+          rating: driver.rating.average,
+        });
+      } else if (payload.type === "schedule") {
+        io.to(clientUserId).emit("acceptanceRequestedSchedule", {
+          ...driverPayload,
+          bookingId,
+        });
+      }
+
+      // Confirm to driver add IF ASAP
       socket.emit("offer_sent", {
         success: true,
         message: "Your offer has been sent to the customer",
       });
-    }
+    },
   );
 };
 
@@ -319,12 +335,12 @@ export const cancelOffer = (socket: CustomSocket, io: Server) => {
 
       await BookingModel.updateOne(
         { _id: bookingId },
-        { $pull: { requestedDrivers: id } }
+        { $pull: { requestedDrivers: id } },
       );
 
       socket.emit("offerCancelledConfirmed", { bookingId });
 
       io.to(clientId).emit("offerCancelled", { driverId: id });
-    }
+    },
   );
 };

@@ -42,12 +42,11 @@ export const toggleOnDuty = (socket: CustomSocket) => {
 
         socket.data.location = location;
         socket.data.vehicleType = vehicleType;
-        socket.data.lastLocationUpdate = new Date();
 
         console.log(
           `✅ Driver ${socket.userId} is ON DUTY at`,
           location,
-          `with vehicle: ${vehicleType}`
+          `with vehicle: ${vehicleType}`,
         );
 
         const activeBooking = await BookingModel.findOne({
@@ -94,12 +93,11 @@ export const toggleOnDuty = (socket: CustomSocket) => {
         // Clear driver data
         delete socket.data.location;
         delete socket.data.vehicleType;
-        delete socket.data.lastLocationUpdate;
 
         console.log(`❌ Driver ${socket.userId} is OFF DUTY`);
         socket.emit("dutyStatusChanged", { isOnDuty });
       }
-    }
+    },
   );
 };
 
@@ -115,7 +113,6 @@ export const updateDriverLocation = (socket: CustomSocket) => {
     }
 
     socket.data.location = location;
-    socket.data.lastLocationUpdate = new Date();
     const vehicleType = socket.data.vehicleType;
 
     // ✅ Fetch pending and searching bookings
@@ -142,7 +139,7 @@ export const updateDriverLocation = (socket: CustomSocket) => {
         {
           lat: location.lat,
           lng: location.lng,
-        }
+        },
       );
       return distance <= DRIVER_RADIUS_KM;
     });
@@ -161,7 +158,7 @@ export const updateDriverLocation = (socket: CustomSocket) => {
     });
 
     console.log(
-      `📦 Driver ${socket.userId} now has ${nearbyBookings.length} nearby bookings`
+      `📦 Driver ${socket.userId} now has ${nearbyBookings.length} nearby bookings`,
     );
 
     // ✅ Send updated bookings list
@@ -185,7 +182,7 @@ export const setDriverAvailable = (socket: CustomSocket) => {
           status: "completed",
           completedAt: new Date(),
         },
-        { new: true }
+        { new: true },
       );
 
       // ✅ Send push notification to the client
@@ -196,7 +193,7 @@ export const setDriverAvailable = (socket: CustomSocket) => {
         {
           // bookingId: data.bookingId,
           type: "booking_completed",
-        }
+        },
       );
 
       // ✅ Fetch pending and searching bookings
@@ -231,7 +228,7 @@ export const setDriverAvailable = (socket: CustomSocket) => {
           {
             lat: location.lat,
             lng: location.lng,
-          }
+          },
         );
         return distance <= DRIVER_RADIUS_KM;
       });
@@ -250,12 +247,12 @@ export const setDriverAvailable = (socket: CustomSocket) => {
       });
 
       console.log(
-        `📦 Found ${nearbyBookings.length} nearby bookings for driver ${socket.userId}`
+        `📦 Found ${nearbyBookings.length} nearby bookings for driver ${socket.userId}`,
       );
 
-      socket.emit("availabilityChanged", {
-        pendingBookings: formattedPendingBookings,
+      socket.emit("pendingBookingsUpdated", {
+        bookings: formattedPendingBookings,
       });
-    }
+    },
   );
 };

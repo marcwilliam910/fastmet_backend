@@ -34,6 +34,13 @@ export const updateDriverProfile: RequestHandler = async (req, res) => {
 
   const file = req.file;
 
+  if (!firstName || !lastName || !vehicle || !licenseNumber || !file) {
+    return res.status(400).json({
+      success: false,
+      error: "All fields are required",
+    });
+  }
+
   let profilePictureUrl = "";
 
   // Upload to Cloudinary if file exists

@@ -56,3 +56,11 @@ export interface SelectedVehicle {
   paidServices: Service[];
   variant: ILoadVariant;
 }
+
+export type RequestedDriver = {
+  name: string;
+  id: string;
+  vehicleImage: string;
+  totalBookings: number;
+  profilePicture: string;
+};

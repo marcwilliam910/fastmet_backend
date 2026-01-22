@@ -8,6 +8,8 @@ import {
   getSecureFolderId,
   uploadMultipleImagesToCloudinary,
 } from "../../services/cloudinaryService";
+import { RequestedDriver } from "../../types/booking";
+import { schedule } from "node-cron";
 
 export interface PopulatedDriver {
   _id: mongoose.Types.ObjectId;
@@ -16,50 +18,117 @@ export interface PopulatedDriver {
   rating: IDriverRating;
   profilePictureUrl: string;
   phoneNumber: string;
+  images: {
+    frontView: string;
+  };
+}
+export interface LeanBooking {
+  _id: Types.ObjectId;
+  status: string;
+  createdAt: Date;
+  driverId?: PopulatedDriver | null;
+  requestedDrivers?: PopulatedDriver[];
 }
 
 export const getBookingsByStatus: RequestHandler = async (req, res) => {
   const clientId = getUserId(req);
-
-  const { status, page = 1, limit = 5 } = req.query;
-
   if (!clientId) {
     return res.status(400).json({ message: "Missing user ID" });
   }
 
+  const { status, page = 1, limit = 5 } = req.query;
+
   const pageNum = Number(page);
   const limitNum = Number(limit);
 
+  /* -------------------------------------------------
+       1. Fetch paginated bookings
+    -------------------------------------------------- */
   const bookings = await BookingModel.find({
     customerId: new mongoose.Types.ObjectId(clientId),
     status,
   })
     .populate("driverId", "_id firstName lastName rating profilePictureUrl")
+    .populate({
+      path: "requestedDrivers",
+      select: "_id firstName lastName rating profilePictureUrl images",
+    })
     .sort({ createdAt: -1 })
     .skip((pageNum - 1) * limitNum)
     .limit(limitNum)
-    .lean();
+    .lean<LeanBooking[]>();
 
+  /* -------------------------------------------------
+       2. Collect ALL requested driver IDs (once)
+    -------------------------------------------------- */
+  const requestedDriverIds = bookings
+    .flatMap((b) => b.requestedDrivers ?? [])
+    .map((d) => d._id);
+
+  /* -------------------------------------------------
+       3. Aggregate completed bookings per driver (ONE query)
+    -------------------------------------------------- */
+  let completedMap = new Map<string, number>();
+
+  if (requestedDriverIds.length > 0) {
+    const completedCounts = await BookingModel.aggregate([
+      {
+        $match: {
+          driverId: { $in: requestedDriverIds },
+          status: "completed",
+        },
+      },
+      {
+        $group: {
+          _id: "$driverId",
+          total: { $sum: 1 },
+        },
+      },
+    ]);
+
+    completedMap = new Map(
+      completedCounts.map((d) => [d._id.toString(), d.total]),
+    );
+  }
+
+  /* -------------------------------------------------
+       4. Format response
+    -------------------------------------------------- */
   const formattedBookings = bookings.map((booking) => {
-    const driver = booking.driverId as PopulatedDriver | null;
+    const driver = booking.driverId || null;
+    const requestedDrivers = booking.requestedDrivers || [];
 
-    // Use object destructuring to exclude driverId
-    const { driverId, ...bookingData } = booking;
+    const formattedRequestedDrivers =
+      booking.status === "pending"
+        ? requestedDrivers.map((reqDriver: any) => ({
+            id: reqDriver._id.toString(),
+            name: `${reqDriver.firstName} ${reqDriver.lastName}`,
+            rating: reqDriver.rating.average,
+            profilePicture: reqDriver.profilePictureUrl || "",
+            vehicleImage: reqDriver.images?.frontView || "",
+            totalBookings: completedMap.get(reqDriver._id.toString()) ?? 0,
+          }))
+        : [];
+
+    const { driverId, requestedDrivers: _, ...bookingData } = booking;
 
     return {
       ...bookingData,
       driver: driver
         ? {
             id: driver._id,
-            name: driver.firstName + " " + driver.lastName,
+            name: `${driver.firstName} ${driver.lastName}`,
             rating: driver.rating.average,
             profilePictureUrl: driver.profilePictureUrl,
           }
         : null,
+      requestedDrivers: formattedRequestedDrivers,
     };
   });
 
-  // Get total count to know if there are more pages
+  /* -------------------------------------------------
+       5. Correct pagination count
+    -------------------------------------------------- */
   const total = await BookingModel.countDocuments({
     customerId: new mongoose.Types.ObjectId(clientId),
     status,
@@ -123,6 +192,7 @@ export const getBookingsCount: RequestHandler = async (req, res) => {
   // Convert aggregation result to clean object:
   const counts: Record<string, number> = {
     pending: 0,
+    scheduled: 0,
     active: 0,
     completed: 0,
     cancelled: 0,
