@@ -1,4 +1,4 @@
-import { ILoadVariant } from "../models/Vehicle";
+import {ILoadVariant, ISearchConfig} from "../models/Vehicle";
 
 export type RequestBooking = {
   customerId: string;
@@ -32,7 +32,7 @@ export type RouteData = {
 export type LocationDetails = {
   name: string;
   address: string;
-  coords: { lat: number; lng: number };
+  coords: {lat: number; lng: number};
   additionalDetails?: string;
 };
 
@@ -54,6 +54,7 @@ export interface SelectedVehicle {
   imageUrl: string;
   freeServices: Service[];
   paidServices: Service[];
+  searchConfig: ISearchConfig;
   variant: ILoadVariant;
 }
 

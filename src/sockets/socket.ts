@@ -1,9 +1,10 @@
-import { Server, Socket } from "socket.io";
+import {Server, Socket} from "socket.io";
 import {
   cancelBooking,
   getDriverLocation,
   pickDriver,
   requestAsapBooking,
+  requestScheduleBooking,
 } from "./handlers/client/booking";
 import {
   cancelOffer,
@@ -18,8 +19,8 @@ import {
   updateDriverLocation,
 } from "./handlers/driver/duty";
 import jwt from "jsonwebtoken";
-import { SOCKET_ROOMS } from "../utils/constants";
-import { chatHandler } from "./handlers/chat";
+import {SOCKET_ROOMS} from "../utils/constants";
+import {chatHandler} from "./handlers/chat";
 
 // Extend Socket type to include custom properties
 export interface CustomSocket extends Socket {
@@ -97,6 +98,7 @@ export const initSocket = (server: any) => {
     // Client-specific handlers
     if (socket.userType === "client") {
       requestAsapBooking(socket, io);
+      requestScheduleBooking(socket, io);
       getDriverLocation(socket, io);
       pickDriver(socket, io);
       cancelBooking(socket, io);
