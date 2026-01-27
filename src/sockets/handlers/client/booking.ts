@@ -1,11 +1,11 @@
-import {Socket, Server} from "socket.io";
+import { Socket, Server } from "socket.io";
 import BookingModel from "../../../models/Booking";
-import {withErrorHandling} from "../../../utils/socketWrapper";
-import {CustomSocket} from "../../socket";
-import {calculateDistance} from "../../../utils/helpers/distanceCalculator";
-import {DRIVER_RADIUS_KM, SOCKET_ROOMS} from "../../../utils/constants";
+import { withErrorHandling } from "../../../utils/socketWrapper";
+import { CustomSocket } from "../../socket";
+import { calculateDistance } from "../../../utils/helpers/distanceCalculator";
+import { DRIVER_RADIUS_KM, SOCKET_ROOMS } from "../../../utils/constants";
 import UserModel from "../../../models/User";
-import {RequestBooking} from "../../../types/booking";
+import { RequestBooking } from "../../../types/booking";
 import mongoose from "mongoose";
 
 export const bookingTimers = new Map<string, NodeJS.Timeout>();
@@ -29,7 +29,7 @@ export const requestAsapBooking = (socket: CustomSocket, io: Server) => {
       return;
     }
 
-    const {initialRadiusKm, incrementKm, maxRadiusKm, intervalMs} =
+    const { initialRadiusKm, incrementKm, maxRadiusKm, intervalMs } =
       searchConfig;
 
     const booking = await BookingModel.create({
@@ -170,7 +170,7 @@ export const requestAsapBooking = (socket: CustomSocket, io: Server) => {
       if (newDrivers.length > 0) {
         newDrivers.map((d) => driverList.add(d.driverId));
 
-        newDrivers.forEach(({socket, distanceKm}) => {
+        newDrivers.forEach(({ socket, distanceKm }) => {
           socket.join(temporaryRoom);
 
           socket.emit("new_booking_request", {
@@ -211,8 +211,8 @@ export const requestAsapBooking = (socket: CustomSocket, io: Server) => {
       }
 
       await BookingModel.findByIdAndUpdate(freshBooking._id, {
-        $inc: {searchStep: 1},
-        $set: {currentRadiusKm: nextRadius},
+        $inc: { searchStep: 1 },
+        $set: { currentRadiusKm: nextRadius },
       });
 
       setTimeout(runSearchStep, intervalMs);
@@ -361,7 +361,7 @@ export const requestScheduleBooking = (socket: CustomSocket, io: Server) => {
 export const getDriverLocation = (socket: CustomSocket, io: Server) => {
   socket.on(
     "getDriverLocation",
-    ({bookingId, driverId}: {bookingId: string; driverId: string}) => {
+    ({ bookingId, driverId }: { bookingId: string; driverId: string }) => {
       if (!bookingId || !driverId) return;
 
       const clientUserId = socket.userId;
@@ -389,7 +389,7 @@ export const pickDriver = (socket: CustomSocket, io: Server) => {
       bookingId: string;
       type: "asap" | "schedule";
     }) => {
-      const {driverId, bookingId} = payload;
+      const { driverId, bookingId } = payload;
 
       console.log(
         `🚗 Customer attempting to pick driver ${driverId} for booking ${bookingId}`,
@@ -435,7 +435,7 @@ export const pickDriver = (socket: CustomSocket, io: Server) => {
           status: payload.type === "asap" ? "active" : "scheduled",
           acceptedAt: new Date(),
         },
-        {new: true},
+        { new: true },
       );
 
       if (!booking) {
@@ -466,23 +466,23 @@ export const pickDriver = (socket: CustomSocket, io: Server) => {
           ? "bookingConfirmed"
           : "bookingConfirmedSchedule";
 
-      socket.emit(notifyCustomerSocket, {bookingId});
+      socket.emit(notifyCustomerSocket, { bookingId });
 
       booking.requestedDrivers?.forEach((requestedDriverId) => {
         const requestedDriverIdStr = requestedDriverId.toString();
 
         if (requestedDriverIdStr === driverId) {
           // Accepted driver
-          io.to(requestedDriverIdStr).emit(notifyDriverAccepted, {bookingId});
+          io.to(requestedDriverIdStr).emit(notifyDriverAccepted, { bookingId });
         } else {
           // Rejected drivers
-          io.to(requestedDriverIdStr).emit("bookingTaken", {bookingId});
+          io.to(requestedDriverIdStr).emit("bookingTaken", { bookingId });
         }
       });
 
       // Notify all drivers in temporary room who haven't offered yet
       const temporaryRoom = `BOOKING_${bookingId}`;
-      io.to(temporaryRoom).emit("bookingExpired", {bookingId});
+      io.to(temporaryRoom).emit("bookingExpired", { bookingId });
 
       /* ------------------------------------------------------------------ */
       /* CLEANUP: Remove all sockets from temporary room                    */
@@ -501,18 +501,18 @@ export const pickDriver = (socket: CustomSocket, io: Server) => {
 export const cancelBooking = (socket: CustomSocket, io: Server) => {
   const on = withErrorHandling(socket);
 
-  on("cancelBookingRequest", async (payload: {bookingId: string}) => {
-    const {bookingId} = payload;
+  on("cancelBookingRequest", async (payload: { bookingId: string }) => {
+    const { bookingId } = payload;
 
     console.log(`🚗 Customer attempting to cancel booking ${bookingId}`);
 
     const booking = await BookingModel.findOneAndUpdate(
-      {_id: bookingId, status: "searching"},
+      { _id: bookingId, status: { $in: ["pending", "searching"] } },
       {
         status: "cancelled",
         cancelledAt: new Date(),
       },
-      {new: true},
+      { new: true },
     );
 
     if (!booking) {
@@ -536,10 +536,10 @@ export const cancelBooking = (socket: CustomSocket, io: Server) => {
     /* ------------------------------------------------------------------ */
     /* Notify customer and drivers                                        */
     /* ------------------------------------------------------------------ */
-    socket.emit("bookingCancelled", {bookingId});
+    socket.emit("bookingCancelled", { bookingId });
 
     const temporaryRoom = `BOOKING_${bookingId}`;
-    io.to(temporaryRoom).emit("bookingCancelled", {bookingId});
+    io.to(temporaryRoom).emit("bookingCancelled", { bookingId });
 
     /* ------------------------------------------------------------------ */
     /* CLEANUP: Remove all sockets from temporary room                    */

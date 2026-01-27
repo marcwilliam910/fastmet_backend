@@ -1,14 +1,14 @@
-import {Server} from "socket.io";
-import {CustomSocket} from "../../socket";
+import { Server } from "socket.io";
+import { CustomSocket } from "../../socket";
 import BookingModel from "../../../models/Booking";
-import {withErrorHandling} from "../../../utils/socketWrapper";
-import {SOCKET_ROOMS} from "../../../utils/constants";
+import { withErrorHandling } from "../../../utils/socketWrapper";
+import { SOCKET_ROOMS } from "../../../utils/constants";
 import {
   canAcceptAsapBooking,
   canAcceptScheduledBooking,
 } from "../../../utils/helpers/bookingFeasibility";
 import mongoose from "mongoose";
-import {sendNotifToClient} from "../../../utils/pushNotifications";
+import { sendNotifToClient } from "../../../utils/pushNotifications";
 import DriverModel from "../../../models/Driver";
 
 // export const acceptBooking = (socket: CustomSocket, io: Server) => {
@@ -119,14 +119,14 @@ export const driverLocation = (socket: CustomSocket, io: Server) => {
     }: {
       clientUserId: string;
       bookingId: string;
-      driverLoc: {lat: number; lng: number; heading: number};
+      driverLoc: { lat: number; lng: number; heading: number };
     }) => {
       if (!driverLoc || !clientUserId || !bookingId) return;
 
       console.log(`📍 Sending driver location to client ${clientUserId}`);
 
       // Send location back to the client
-      io.to(clientUserId).emit("driverLocationResponse", {driverLoc});
+      io.to(clientUserId).emit("driverLocationResponse", { driverLoc });
     },
   );
 };
@@ -136,8 +136,8 @@ export const handleStartScheduledTrip = (socket: CustomSocket, io: Server) => {
 
   on(
     "startScheduledTrip",
-    async (data: {bookingId: string; driverId: string}) => {
-      const {bookingId, driverId} = data;
+    async (data: { bookingId: string; driverId: string }) => {
+      const { bookingId, driverId } = data;
 
       console.log(`🚗 Driver ${driverId} starting scheduled trip ${bookingId}`);
 
@@ -201,7 +201,7 @@ export const handleStartScheduledTrip = (socket: CustomSocket, io: Server) => {
 
       // ✅ Update using updateOne (more efficient)
       await BookingModel.updateOne(
-        {_id: bookingId},
+        { _id: bookingId },
         {
           $set: {
             status: "active",
@@ -211,7 +211,7 @@ export const handleStartScheduledTrip = (socket: CustomSocket, io: Server) => {
 
       console.log(`✅ Trip ${bookingId} status changed: scheduled → active`);
 
-      const {customerId, ...rest} = booking as any;
+      const { customerId, ...rest } = booking as any;
 
       const formattedBooking = {
         ...rest,
@@ -255,7 +255,7 @@ export const requestAcceptance = (socket: CustomSocket, io: Server) => {
       profilePicture: string;
       type: "asap" | "schedule" | "pooling";
     }) => {
-      const {id: driverId, bookingId, clientUserId} = payload;
+      const { id: driverId, bookingId, clientUserId } = payload;
 
       // ✅ Check if driver already offered for this booking
       const booking = await BookingModel.findById(bookingId);
@@ -307,7 +307,7 @@ export const requestAcceptance = (socket: CustomSocket, io: Server) => {
 
       // ✅ Add driver to requestedDrivers array using $addToSet to prevent duplicates
       await BookingModel.findByIdAndUpdate(bookingId, {
-        $addToSet: {requestedDrivers: driverId},
+        $addToSet: { requestedDrivers: driverId },
       });
 
       console.log(`🚗 Driver ${driverId} offered for booking ${bookingId}`);
@@ -349,17 +349,17 @@ export const cancelOffer = (socket: CustomSocket, io: Server) => {
 
   on(
     "cancelOffer",
-    async (payload: {clientId: string; id: string; bookingId: string}) => {
-      const {clientId, id, bookingId} = payload;
+    async (payload: { clientId: string; id: string; bookingId: string }) => {
+      const { clientId, id, bookingId } = payload;
 
       await BookingModel.updateOne(
-        {_id: bookingId},
-        {$pull: {requestedDrivers: id}},
+        { _id: bookingId },
+        { $pull: { requestedDrivers: id } },
       );
 
-      socket.emit("offerCancelledConfirmed", {bookingId});
+      socket.emit("offerCancelledConfirmed", { bookingId });
 
-      io.to(clientId).emit("offerCancelled", {driverId: id});
+      io.to(clientId).emit("offerCancelled", { driverId: id });
     },
   );
 };
