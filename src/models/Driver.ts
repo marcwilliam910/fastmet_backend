@@ -1,4 +1,4 @@
-import { model, Schema, Document, Types } from "mongoose";
+import {model, Schema, Document, Types} from "mongoose";
 
 export interface IDriverRating {
   average: number;
@@ -35,6 +35,7 @@ export interface IDriver extends Document {
   pushNotificationsEnabled: boolean;
   createdAt: Date;
   updatedAt: Date;
+  serviceAreas: string[];
 }
 
 const driverSchema = new Schema<IDriver>(
@@ -78,14 +79,14 @@ const driverSchema = new Schema<IDriver>(
       },
     },
 
-    birthDate: { type: Date },
+    birthDate: {type: Date},
 
     gender: {
       type: String,
       enum: ["male", "female", "other"],
     },
 
-    profilePictureUrl: { type: String, default: null },
+    profilePictureUrl: {type: String, default: null},
 
     registrationStep: {
       type: Number,
@@ -112,20 +113,20 @@ const driverSchema = new Schema<IDriver>(
 
     images: {
       // Step 1
-      selfie: { type: String, default: null },
-      selfieWithLicense: { type: String, default: null },
+      selfie: {type: String, default: null},
+      selfieWithLicense: {type: String, default: null},
 
       // Step 2 – Vehicle Exterior
-      frontView: { type: String, default: null },
-      sideLeftView: { type: String, default: null },
-      sideRightView: { type: String, default: null },
-      backView: { type: String, default: null },
+      frontView: {type: String, default: null},
+      sideLeftView: {type: String, default: null},
+      sideRightView: {type: String, default: null},
+      backView: {type: String, default: null},
 
       // Step 3 – Documents + Engine + Chassis
-      or: { type: String, default: null },
-      cr: { type: String, default: null },
-      engine: { type: String, default: null },
-      chassis: { type: String, default: null },
+      or: {type: String, default: null},
+      cr: {type: String, default: null},
+      engine: {type: String, default: null},
+      chassis: {type: String, default: null},
     },
     expoPushToken: {
       type: String,
@@ -135,8 +136,12 @@ const driverSchema = new Schema<IDriver>(
       type: Boolean,
       default: true,
     },
+    serviceAreas: {
+      type: [String],
+      default: [],
+    },
   },
-  { timestamps: true },
+  {timestamps: true},
 );
 
 const DriverModel = model<IDriver>("Driver", driverSchema);

@@ -1,12 +1,12 @@
-import { RequestHandler } from "express";
+import {RequestHandler} from "express";
 import DriverModel from "../../models/Driver";
-import { PreRegDriverModel } from "../../models/PreRegDriver";
-import { generateJWT } from "../../utils/helpers/jwt";
-import { normalizePHPhoneNumber } from "../../utils/helpers/phoneNumber";
+import {PreRegDriverModel} from "../../models/PreRegDriver";
+import {generateJWT} from "../../utils/helpers/jwt";
+import {normalizePHPhoneNumber} from "../../utils/helpers/phoneNumber";
 import mongoose from "mongoose";
 
 export const sendOTP: RequestHandler = async (req, res) => {
-  const { phoneNumber } = req.body;
+  const {phoneNumber} = req.body;
 
   if (!phoneNumber) {
     return res.status(400).json({
@@ -30,7 +30,7 @@ export const sendOTP: RequestHandler = async (req, res) => {
 };
 
 export const verifyOTP: RequestHandler = async (req, res) => {
-  const { phoneNumber, otpCode: otp } = req.body;
+  const {phoneNumber, otpCode: otp} = req.body;
 
   if (!phoneNumber || !otp) {
     return res.status(400).json({
@@ -98,7 +98,7 @@ export const verifyOTP: RequestHandler = async (req, res) => {
     driver.vehicle &&
     typeof driver.vehicle === "object" &&
     "key" in driver.vehicle
-      ? (driver.vehicle as { key: string }).key
+      ? (driver.vehicle as {key: string}).key
       : null;
 
   console.log("vehicle key: ", vehicleKey);
@@ -113,6 +113,7 @@ export const verifyOTP: RequestHandler = async (req, res) => {
       license: driver.licenseNumber,
       profilePictureUrl: driver.profilePictureUrl,
       vehicleImage: driver.images.frontView,
+      serviceAreas: driver.serviceAreas,
       firstName: driver.firstName,
       lastName: driver.lastName,
       vehicle: vehicleKey,

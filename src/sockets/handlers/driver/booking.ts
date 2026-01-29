@@ -10,6 +10,7 @@ import {
 import mongoose from "mongoose";
 import {sendNotifToClient} from "../../../utils/pushNotifications";
 import DriverModel from "../../../models/Driver";
+import NotificationModel from "../../../models/Notification";
 
 // export const acceptBooking = (socket: CustomSocket, io: Server) => {
 //   const on = withErrorHandling(socket);
@@ -332,6 +333,38 @@ export const requestAcceptance = (socket: CustomSocket, io: Server) => {
           ...driverPayload,
           bookingId,
         });
+
+        // Create notification + push for scheduled booking offer
+        const notifMessage = `${payload.name} has offered to handle your scheduled delivery from ${booking.pickUp?.address || "pickup"} to ${booking.dropOff?.address || "destination"}`;
+
+        await NotificationModel.create({
+          userId: clientUserId,
+          userType: "Client",
+          title: "New Driver Offer",
+          message: notifMessage,
+          type: "driver_offer",
+          data: {
+            bookingId: booking._id,
+            driverId,
+            driverName: payload.name,
+            driverRating: driver.rating.average,
+          },
+        });
+
+        // Send push notification
+        await sendNotifToClient(
+          clientUserId,
+          "New Driver Offer",
+          notifMessage,
+          {
+            bookingId: booking._id,
+            type: "driver_offer",
+          },
+        );
+
+        console.log(
+          `📩 Notification sent to client ${clientUserId} for driver offer`,
+        );
       }
 
       // Confirm to driver
