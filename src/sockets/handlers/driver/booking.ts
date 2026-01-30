@@ -132,7 +132,7 @@ export const driverLocation = (socket: CustomSocket, io: Server) => {
   );
 };
 
-export const handleStartScheduledTrip = (socket: CustomSocket, io: Server) => {
+export const handleStartScheduledTrip = (socket: CustomSocket) => {
   const on = withErrorHandling(socket);
 
   on(
@@ -227,6 +227,16 @@ export const handleStartScheduledTrip = (socket: CustomSocket, io: Server) => {
       socket.emit("scheduledTripStarted", {
         booking: formattedBooking,
       });
+
+      await sendNotifToClient(
+        customerId._id.toString(),
+        "Scheduled Trip Started",
+        "Your driver has started the scheduled trip and is on the way!",
+        {
+          bookingId: bookingId,
+          type: "driver_started_scheduled_trip",
+        },
+      );
 
       // Get customerId for notification (already have it from booking above)
       // const customerId = booking.customerId;
@@ -393,6 +403,25 @@ export const cancelOffer = (socket: CustomSocket, io: Server) => {
       socket.emit("offerCancelledConfirmed", {bookingId});
 
       io.to(clientId).emit("offerCancelled", {driverId: id});
+    },
+  );
+};
+
+export const arrivedAtPickup = (socket: CustomSocket) => {
+  const on = withErrorHandling(socket);
+
+  on(
+    "arrivedAtPickup",
+    async (payload: {clientId: string; bookingId: string}) => {
+      await sendNotifToClient(
+        payload.clientId,
+        "Driver Arrived at Pickup",
+        "The driver has arrived at the pickup location. Please assist them with the delivery.",
+        {
+          bookingId: payload.bookingId,
+          type: "driver_arrived_at_pickup",
+        },
+      );
     },
   );
 };

@@ -7,6 +7,7 @@ import {
   requestScheduleBooking,
 } from "./handlers/client/booking";
 import {
+  arrivedAtPickup,
   cancelOffer,
   // acceptBooking,
   driverLocation,
@@ -90,9 +91,10 @@ export const initSocket = (server: any) => {
       // acceptBooking(socket, io);
       driverLocation(socket, io);
       setDriverAvailable(socket);
-      handleStartScheduledTrip(socket, io);
+      handleStartScheduledTrip(socket);
       requestAcceptance(socket, io);
       cancelOffer(socket, io);
+      arrivedAtPickup(socket);
     }
 
     // Client-specific handlers
