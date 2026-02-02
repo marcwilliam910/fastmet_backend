@@ -10,18 +10,20 @@ import {
   uploadMultipleImagesWithPublicIds,
 } from "../../services/cloudinaryService";
 
-export const updateDriverProfile: RequestHandler = async (req, res) => {
+export const addDriverProfile: RequestHandler = async (req, res) => {
   const driverId = getUserId(req);
   const {
     firstName,
     lastName,
     vehicle,
     license: licenseNumber,
+    serviceAreas,
   } = req.body as {
     firstName: string;
     lastName: string;
     vehicle: string;
     license: string;
+    serviceAreas: string;
   };
 
   // Validation
@@ -33,8 +35,17 @@ export const updateDriverProfile: RequestHandler = async (req, res) => {
   }
 
   const file = req.file;
+  const serviceAreasArray = JSON.parse(serviceAreas);
 
-  if (!firstName || !lastName || !vehicle || !licenseNumber || !file) {
+  if (
+    !firstName ||
+    !lastName ||
+    !vehicle ||
+    !licenseNumber ||
+    !file ||
+    !serviceAreas ||
+    serviceAreasArray.length === 0
+  ) {
     return res.status(400).json({
       success: false,
       error: "All fields are required",
@@ -77,11 +88,12 @@ export const updateDriverProfile: RequestHandler = async (req, res) => {
   }
 
   // Update driver data
-  if (firstName) driver.firstName = firstName;
-  if (lastName) driver.lastName = lastName;
-  if (vehicle) driver.vehicle = new mongoose.Types.ObjectId(vehicle);
-  if (licenseNumber) driver.licenseNumber = licenseNumber;
   if (profilePictureUrl) driver.profilePictureUrl = profilePictureUrl;
+  driver.firstName = firstName;
+  driver.lastName = lastName;
+  driver.vehicle = new mongoose.Types.ObjectId(vehicle);
+  driver.licenseNumber = licenseNumber;
+  driver.serviceAreas = serviceAreasArray;
   driver.registrationStep = 2;
 
   await driver.save();

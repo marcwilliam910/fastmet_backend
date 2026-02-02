@@ -1,4 +1,5 @@
 import { model, Schema, Document, Types } from "mongoose";
+import { METRO_MANILA_CITIES } from "../utils/helpers/locationHelpers";
 
 export interface IDriverRating {
   average: number;
@@ -12,7 +13,7 @@ export interface IDriver extends Document {
   firstName: string;
   lastName: string;
   rating: IDriverRating;
-  birthDate?: Date;
+  // birthDate?: Date;
   gender?: "male" | "female" | "other";
   profilePictureUrl?: string;
   registrationStep: number;
@@ -33,8 +34,7 @@ export interface IDriver extends Document {
   };
   expoPushToken?: string;
   pushNotificationsEnabled: boolean;
-  createdAt: Date;
-  updatedAt: Date;
+  serviceAreas: string[];
 }
 
 const driverSchema = new Schema<IDriver>(
@@ -78,7 +78,7 @@ const driverSchema = new Schema<IDriver>(
       },
     },
 
-    birthDate: { type: Date },
+    // birthDate: { type: Date },
 
     gender: {
       type: String,
@@ -135,9 +135,35 @@ const driverSchema = new Schema<IDriver>(
       type: Boolean,
       default: true,
     },
+    serviceAreas: {
+      type: [String],
+      enum: [...METRO_MANILA_CITIES, "Metro Manila"], // 🆕 Include "Metro Manila" as option
+      default: [],
+      required: true,
+      validate: {
+        validator: function (areas: string[]) {
+          return areas.length > 0; // At least one service area required
+        },
+        message: "At least one service area is required",
+      },
+    },
   },
   { timestamps: true },
 );
+
+// Indexes for efficient querying
+// 1. Service area queries (already exists)
+driverSchema.index({ serviceAreas: 1 });
+
+// 2. Approval status filtering
+driverSchema.index({ approvalStatus: 1 });
+
+// 3. Vehicle reference lookup
+driverSchema.index({ vehicle: 1 });
+
+// 4. Service area + approval status compound (for finding approved drivers in areas)
+driverSchema.index({ serviceAreas: 1, approvalStatus: 1 });
+// Note: phoneNumber and licenseNumber are already indexed automatically due to unique constraint
 
 const DriverModel = model<IDriver>("Driver", driverSchema);
 export default DriverModel;

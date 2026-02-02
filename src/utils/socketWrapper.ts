@@ -4,13 +4,16 @@ import { Socket } from "socket.io";
 export const withErrorHandling = (socket: Socket) => {
   return <T = any>(
     eventName: string,
-    handler: (data: T) => Promise<void> | void
+    handler: (data: T) => Promise<void> | void,
   ) => {
     socket.on(eventName, async (data: T) => {
       try {
         await handler(data);
       } catch (error: any) {
-        console.error(`[${eventName}] Error:`, error);
+        // ADD THESE LINES - Force log to console
+        console.error(`❌❌❌ [${eventName}] Error caught:`, error);
+        console.error("Error stack:", error.stack);
+        console.error("Error details:", JSON.stringify(error, null, 2));
 
         socket.emit("error", {
           event: eventName,

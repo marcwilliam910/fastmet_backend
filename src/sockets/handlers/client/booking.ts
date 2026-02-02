@@ -7,6 +7,8 @@ import { DRIVER_RADIUS_KM, SOCKET_ROOMS } from "../../../utils/constants";
 import UserModel from "../../../models/User";
 import { RequestBooking } from "../../../types/booking";
 import mongoose from "mongoose";
+import DriverModel from "../../../models/Driver";
+import { extractCityFromCoords } from "../../../utils/helpers/locationHelpers";
 
 export const bookingTimers = new Map<string, NodeJS.Timeout>();
 
@@ -16,18 +18,26 @@ export const requestAsapBooking = (socket: CustomSocket, io: Server) => {
   on("request_asap_booking", async (data: RequestBooking) => {
     console.log("📨 Booking request received:", data);
 
-    /* ------------------------------------------------------------------ */
-    /* 1. Create booking (searching immediately)                           */
-    /* ------------------------------------------------------------------ */
-    const vehicleType = data.selectedVehicle?.key;
-    const searchConfig = data.selectedVehicle?.searchConfig;
-
-    if (!vehicleType || !searchConfig) {
+    // Early validation
+    if (!data.selectedVehicle?.key || !data.selectedVehicle?.searchConfig) {
       socket.emit("bookingRequestFailed", {
         message: "Invalid vehicle type or missing search configuration",
       });
       return;
     }
+
+    if (!data.customerId || !data.pickUp || !data.dropOff) {
+      socket.emit("bookingRequestFailed", {
+        message: "Missing required booking fields",
+      });
+      return;
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* 1. Create booking (searching immediately)                           */
+    /* ------------------------------------------------------------------ */
+    const vehicleType = data.selectedVehicle.key;
+    const searchConfig = data.selectedVehicle.searchConfig;
 
     const { initialRadiusKm, incrementKm, maxRadiusKm, intervalMs } =
       searchConfig;
@@ -63,7 +73,7 @@ export const requestAsapBooking = (socket: CustomSocket, io: Server) => {
       async () => {
         console.log(`⏰ Booking ${booking._id} reached 10-minute timeout`);
 
-        const freshBooking = await BookingModel.findById(booking._id);
+        const freshBooking = await BookingModel.findById(booking._id).lean();
 
         if (freshBooking && freshBooking.status === "searching") {
           // Delete the booking
@@ -81,8 +91,8 @@ export const requestAsapBooking = (socket: CustomSocket, io: Server) => {
           });
 
           // Cleanup room
-          const socketsInRoom = await io.in(temporaryRoom).fetchSockets();
-          socketsInRoom.forEach((s) => s.leave(temporaryRoom));
+          // const socketsInRoom = await io.in(temporaryRoom).fetchSockets();
+          // socketsInRoom.forEach((s) => s.leave(temporaryRoom));
 
           console.log(
             `🗑️  Deleted booking ${booking._id} after 10 minutes timeout`,
@@ -115,7 +125,7 @@ export const requestAsapBooking = (socket: CustomSocket, io: Server) => {
     /* ------------------------------------------------------------------ */
     const driverList = new Set<string>();
     const runSearchStep = async () => {
-      const freshBooking = await BookingModel.findById(booking._id);
+      const freshBooking = await BookingModel.findById(booking._id).lean();
 
       if (!freshBooking || freshBooking.status !== "searching") {
         return;
@@ -172,6 +182,8 @@ export const requestAsapBooking = (socket: CustomSocket, io: Server) => {
 
         newDrivers.forEach(({ socket, distanceKm }) => {
           socket.join(temporaryRoom);
+          console.log("Distance: ", distanceKm);
+          console.log("SOcket: ", socket);
 
           socket.emit("new_booking_request", {
             _id: freshBooking._id,
@@ -229,7 +241,20 @@ export const requestScheduleBooking = (socket: CustomSocket, io: Server) => {
   const on = withErrorHandling(socket);
 
   on("request_schedule_booking", async (data) => {
-    console.log("📨 Booking request received:", data);
+    console.log("📨 Schedule booking request received:", data);
+
+    // Early validation
+    if (
+      !data.customerId ||
+      !data.pickUp ||
+      !data.dropOff ||
+      !data.selectedVehicle?.key
+    ) {
+      socket.emit("bookingRequestFailed", {
+        message: "Missing required booking fields",
+      });
+      return;
+    }
 
     // 1. Save booking to DB
     const booking = await BookingModel.create({
@@ -248,9 +273,6 @@ export const requestScheduleBooking = (socket: CustomSocket, io: Server) => {
       return;
     }
 
-    const temporaryRoom = `BOOKING_${booking._id}`;
-
-    // Confirm booking was saved
     socket.emit("bookingRequestSaved", {
       success: true,
       bookingId: booking._id,
@@ -268,14 +290,17 @@ export const requestScheduleBooking = (socket: CustomSocket, io: Server) => {
       bookingId: booking._id,
       pickUp: booking.pickUp,
       dropOff: booking.dropOff,
-      bookingType: booking.bookingType,
+      bookingType: {
+        type: booking.bookingType.type,
+        value: new Date(booking.bookingType.value),
+      },
       routeData: booking.routeData,
       selectedVehicle: booking.selectedVehicle,
       addedServices: booking.addedServices,
       paymentMethod: booking.paymentMethod,
     };
 
-    // 3. Determine vehicle type from booking
+    // 3. Determine vehicle type
     const vehicleType = booking.selectedVehicle.key;
 
     if (!vehicleType) {
@@ -285,9 +310,26 @@ export const requestScheduleBooking = (socket: CustomSocket, io: Server) => {
       return;
     }
 
+    // 4. Extract pickup city from address
+    const pickupCity = extractCityFromCoords(booking.pickUp.coords);
+
+    if (!pickupCity) {
+      console.log(
+        "⚠️ Could not extract city from address:",
+        booking.pickUp.address,
+      );
+      socket.emit("booking_request_failed", {
+        message:
+          "Invalid pickup location. Please ensure pickup is within Metro Manila.",
+      });
+      return;
+    }
+
+    console.log(`📍 Pickup city: ${pickupCity}`);
+
     const vehicleRoom = `VEHICLE_${vehicleType.toUpperCase()}`;
 
-    // 4. Get available & on-duty drivers with matching vehicle type
+    // 5. Get available & on-duty drivers with matching vehicle type
     const availableDriverSockets = await io
       .in(SOCKET_ROOMS.ON_DUTY)
       .in(SOCKET_ROOMS.AVAILABLE)
@@ -298,62 +340,57 @@ export const requestScheduleBooking = (socket: CustomSocket, io: Server) => {
       `🔍 Found ${availableDriverSockets.length} available ${vehicleType} drivers`,
     );
 
-    // 5. Location filtering
-    const nearbyDrivers = availableDriverSockets.filter((driverSocket: any) => {
-      const driverLocation = driverSocket.data.location;
-      if (!driverLocation) {
-        console.log(`⚠️ Driver ${driverSocket.data.userId} has no location`);
-        return false;
-      }
+    // 🆕 6. OPTIMIZED: Batch query all driver IDs at once
+    const driverIds = availableDriverSockets.map((s) => s.data.userId);
 
-      const distance = calculateDistance(
-        {
-          lat: booking.pickUp.coords.lat,
-          lng: booking.pickUp.coords.lng,
-        },
-        {
-          lat: driverLocation.lat,
-          lng: driverLocation.lng,
-        },
-      );
+    // Single database query for all drivers
+    const drivers = await DriverModel.find({
+      _id: { $in: driverIds },
+      $or: [
+        { serviceAreas: pickupCity }, // Match specific city
+        { serviceAreas: "Metro Manila" }, // Or Metro Manila catch-all
+      ],
+    })
+      .select("_id serviceAreas")
+      .lean();
 
-      console.log(
-        `📏 Driver ${driverSocket.data.userId} (${
-          driverSocket.data.vehicleType
-        }) is ${distance.toFixed(2)} km away`,
-      );
+    console.log(
+      `✅ Found ${drivers.length} drivers servicing ${pickupCity} from database`,
+    );
 
-      return distance <= DRIVER_RADIUS_KM;
-    });
+    // Create a Set of eligible driver IDs for fast lookup
+    const eligibleDriverIds = new Set(
+      drivers.map((driver) => driver._id.toString()),
+    );
 
-    if (nearbyDrivers.length === 0) {
+    // Filter sockets based on database results
+    const eligibleDrivers = availableDriverSockets.filter((driverSocket) =>
+      eligibleDriverIds.has(driverSocket.data.userId),
+    );
+
+    if (eligibleDrivers.length === 0) {
       socket.emit("no_drivers_available", {
-        message: `No ${vehicleType} drivers available in your area`,
+        message: `No ${vehicleType} drivers service ${pickupCity} for scheduled bookings. Try selecting a different time or location.`,
       });
       return;
     }
 
     console.log(
-      `🚗 Adding ${nearbyDrivers.length} ${vehicleType} drivers to ${temporaryRoom}`,
+      `🚗 ${eligibleDrivers.length} ${vehicleType} drivers will receive this booking in ${pickupCity}`,
     );
 
-    // 6. Join nearby drivers to this booking room
-    nearbyDrivers.forEach((driverSocket) => {
+    // 7. Join eligible drivers to booking room
+    const temporaryRoom = `BOOKING_${booking._id}`;
+
+    eligibleDrivers.forEach((driverSocket) => {
       driverSocket.join(temporaryRoom);
     });
 
-    // 7. Emit booking to room
+    // 8. Emit booking to eligible drivers
     io.to(temporaryRoom).emit("new_booking_request", driverPayload);
 
-    // Notify client (have available drivers)
-    // socket.emit("booking_request_sent", {
-    //   bookingId: booking._id,
-    //   driversNotified: nearbyDrivers.length,
-    //   vehicleType,
-    // });
-
     console.log(
-      `📤 Booking ${booking._id} sent to ${nearbyDrivers.length} ${vehicleType} drivers in room ${temporaryRoom}`,
+      `📤 Scheduled booking ${booking._id} sent to ${eligibleDrivers.length} drivers in ${pickupCity}`,
     );
   });
 };
@@ -362,7 +399,10 @@ export const getDriverLocation = (socket: CustomSocket, io: Server) => {
   socket.on(
     "getDriverLocation",
     ({ bookingId, driverId }: { bookingId: string; driverId: string }) => {
-      if (!bookingId || !driverId) return;
+      // Early validation
+      if (!bookingId || !driverId || !socket.userId) {
+        return;
+      }
 
       const clientUserId = socket.userId;
 
@@ -391,15 +431,23 @@ export const pickDriver = (socket: CustomSocket, io: Server) => {
     }) => {
       const { driverId, bookingId } = payload;
 
+      // Early validation
+      if (!driverId || !bookingId || !payload.type) {
+        socket.emit("error", {
+          message: "Missing required fields",
+        });
+        return;
+      }
+
       console.log(
         `🚗 Customer attempting to pick driver ${driverId} for booking ${bookingId}`,
       );
 
-      // Check if the booking exists and is pending
+      // Check if the booking exists and is pending (using lean for read-only check)
       const existingBooking = await BookingModel.findOne({
         _id: bookingId,
-        status: "pending",
-      });
+        status: { $in: ["pending", "searching"] },
+      }).lean();
 
       if (!existingBooking) {
         console.log("Booking not found or already accepted");
@@ -427,7 +475,7 @@ export const pickDriver = (socket: CustomSocket, io: Server) => {
       const booking = await BookingModel.findOneAndUpdate(
         {
           _id: bookingId,
-          status: "pending",
+          status: { $in: ["pending", "searching"] },
           requestedDrivers: new mongoose.Types.ObjectId(driverId),
         },
         {
@@ -503,6 +551,14 @@ export const cancelBooking = (socket: CustomSocket, io: Server) => {
 
   on("cancelBookingRequest", async (payload: { bookingId: string }) => {
     const { bookingId } = payload;
+
+    // Early validation
+    if (!bookingId) {
+      socket.emit("error", {
+        message: "Booking ID is required",
+      });
+      return;
+    }
 
     console.log(`🚗 Customer attempting to cancel booking ${bookingId}`);
 

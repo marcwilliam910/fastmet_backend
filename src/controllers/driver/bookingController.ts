@@ -20,9 +20,29 @@ export const getBookings: RequestHandler = async (req, res) => {
   const pageNum = Number(page);
   const limitNum = Number(limit);
 
+  // Handle "offered" bookings separately
+  if (status === "offered") {
+    const query = {
+      status: "pending",
+      requestedDrivers: { $in: [new mongoose.Types.ObjectId(driverId)] },
+    };
+
+    const bookings = await BookingModel.find(query)
+      .sort({ "bookingType.value": 1 })
+      .skip((pageNum - 1) * limitNum)
+      .limit(limitNum);
+
+    const total = await BookingModel.countDocuments(query); // ✓ Same query
+
+    return res.status(200).json({
+      bookings,
+      nextPage: pageNum * limitNum < total ? pageNum + 1 : null,
+    });
+  }
+
+  // Handle regular bookings (active, scheduled, completed)
   const now = new Date();
   const lateThresholdMinutes = 30;
-
   const lateBoundary = new Date(
     now.getTime() - lateThresholdMinutes * 60 * 1000,
   );
@@ -32,29 +52,27 @@ export const getBookings: RequestHandler = async (req, res) => {
     status,
   };
 
+  console.log(status);
+  console.log(driverId);
+
   if (status === "scheduled") {
-    query["bookingType.value"] = {
-      $gte: lateBoundary, // includes late (≤ 30 mins)
-    };
+    query["bookingType.value"] = { $gte: lateBoundary };
   }
 
   const bookings = await BookingModel.find(query)
-    .sort({ "bookingType.value": 1 }) // chronological for scheduled
+    .sort({ "bookingType.value": 1 })
     .skip((pageNum - 1) * limitNum)
     .limit(limitNum);
 
-  // Get total count to know if there are more pages
-  const total = await BookingModel.countDocuments({
-    driverId: new mongoose.Types.ObjectId(driverId),
-    status: status,
-  });
+  console.log(bookings);
+
+  const total = await BookingModel.countDocuments(query); // ✓ Same query
 
   res.status(200).json({
     bookings,
     nextPage: pageNum * limitNum < total ? pageNum + 1 : null,
   });
 };
-
 export const getAllBookingsCount: RequestHandler = async (req, res) => {
   const driverId = getUserId(req);
 
@@ -335,4 +353,19 @@ export const getCompletedCountData: RequestHandler = async (req, res) => {
     totalBooked: result[0]?.count || 0,
     totalEarned: result[0]?.total || 0,
   });
+};
+
+export const getOfferedBookingsCount: RequestHandler = async (req, res) => {
+  const driverId = getUserId(req);
+
+  if (!driverId) {
+    return res.status(400).json({ message: "Missing user ID" });
+  }
+
+  const totalOfferedBookings = await BookingModel.countDocuments({
+    status: "pending",
+    requestedDrivers: { $in: [new mongoose.Types.ObjectId(driverId)] },
+  });
+
+  res.status(200).json({ totalOfferedBookings });
 };

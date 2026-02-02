@@ -18,7 +18,7 @@ export const restoreBookingTimers = async (io: Server) => {
     if (timeRemaining <= 0) {
       // Already expired - delete immediately
       console.log(
-        `⏰ Booking ${booking._id} expired during downtime - deleting`
+        `⏰ Booking ${booking._id} expired during downtime - deleting`,
       );
 
       await BookingModel.findByIdAndDelete(booking._id);
@@ -34,8 +34,8 @@ export const restoreBookingTimers = async (io: Server) => {
       // Still valid - restore timer with remaining time
       console.log(
         `⏱️  Restoring timer for ${booking._id} with ${Math.round(
-          timeRemaining / 1000
-        )}s remaining`
+          timeRemaining / 1000,
+        )}s remaining`,
       );
 
       const timer = setTimeout(async () => {
@@ -47,6 +47,10 @@ export const restoreBookingTimers = async (io: Server) => {
           const temporaryRoom = `BOOKING_${booking._id}`;
           io.to(temporaryRoom).emit("bookingExpired", {
             bookingId: booking._id,
+          });
+
+          io.to(String(booking.customerId)).emit("bookingExpired", {
+            message: "Your booking request has expired",
           });
 
           const socketsInRoom = await io.in(temporaryRoom).fetchSockets();

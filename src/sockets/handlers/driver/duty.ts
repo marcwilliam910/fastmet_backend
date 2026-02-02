@@ -4,12 +4,9 @@ import BookingModel from "../../../models/Booking";
 import { calculateDistance } from "../../../utils/helpers/distanceCalculator";
 import { SOCKET_ROOMS } from "../../../utils/constants";
 import mongoose from "mongoose";
-import UserModel from "../../../models/User";
-import {
-  expo,
-  isValidPushToken,
-  sendNotifToClient,
-} from "../../../utils/pushNotifications";
+import { sendNotifToClient } from "../../../utils/pushNotifications";
+import DriverModel from "../../../models/Driver";
+import { extractCityFromCoords } from "../../../utils/helpers/locationHelpers";
 
 export const toggleOnDuty = (socket: CustomSocket) => {
   const on = withErrorHandling(socket);
@@ -24,15 +21,21 @@ export const toggleOnDuty = (socket: CustomSocket) => {
       const { isOnDuty, location, vehicleType } = data;
 
       if (isOnDuty) {
+        // Defensive: Require both location and vehicleType when going on duty
         if (!location) {
-          throw new Error("Location is required when going on duty");
+          socket.emit("error", {
+            message: "Location is required when going on duty",
+          });
+          return;
         }
-
         if (!vehicleType) {
-          throw new Error("Vehicle type is required when going on duty");
+          socket.emit("error", {
+            message: "Vehicle type is required when going on duty",
+          });
+          return;
         }
 
-        // Join general rooms
+        // Join required socket rooms
         socket.join(SOCKET_ROOMS.ON_DUTY);
         socket.join(SOCKET_ROOMS.AVAILABLE);
 
@@ -40,6 +43,7 @@ export const toggleOnDuty = (socket: CustomSocket) => {
         const vehicleRoom = `VEHICLE_${vehicleType.toUpperCase()}`;
         socket.join(vehicleRoom);
 
+        // Store driver's session data
         socket.data.location = location;
         socket.data.vehicleType = vehicleType;
 
@@ -49,6 +53,7 @@ export const toggleOnDuty = (socket: CustomSocket) => {
           `with vehicle: ${vehicleType}`,
         );
 
+        // Find driver's current active booking, if any
         const activeBooking = await BookingModel.findOne({
           status: "active",
           driverId: new mongoose.Types.ObjectId(socket.userId),
@@ -61,8 +66,7 @@ export const toggleOnDuty = (socket: CustomSocket) => {
 
         let formattedActiveBooking = null;
 
-        if (activeBooking) {
-          // Rename userId to client
+        if (activeBooking && activeBooking.customerId) {
           const { customerId, ...rest } = activeBooking as any;
           formattedActiveBooking = {
             ...rest,
@@ -80,17 +84,16 @@ export const toggleOnDuty = (socket: CustomSocket) => {
           activeBooking: formattedActiveBooking,
         });
       } else {
-        // Leave all driver rooms
+        // Leave all general and vehicle-specific rooms
         socket.leave(SOCKET_ROOMS.ON_DUTY);
         socket.leave(SOCKET_ROOMS.AVAILABLE);
 
-        // Leave vehicle-specific room if it exists
         if (socket.data.vehicleType) {
           const vehicleRoom = `VEHICLE_${socket.data.vehicleType.toUpperCase()}`;
           socket.leave(vehicleRoom);
         }
 
-        // Clear driver data
+        // Clear driver-specific session data
         delete socket.data.location;
         delete socket.data.vehicleType;
 
@@ -101,12 +104,11 @@ export const toggleOnDuty = (socket: CustomSocket) => {
   );
 };
 
-// Update driver location periodically
 export const updateDriverLocation = (socket: CustomSocket) => {
   const on = withErrorHandling(socket);
 
   on("updateLocation", async (location: { lat: number; lng: number }) => {
-    // ✅ Check room membership instead of socket.data
+    // Driver must be on duty to update location
     if (!socket.rooms.has(SOCKET_ROOMS.ON_DUTY)) {
       socket.emit("error", { message: "Driver must be on duty" });
       return;
@@ -114,69 +116,136 @@ export const updateDriverLocation = (socket: CustomSocket) => {
 
     socket.data.location = location;
     const vehicleType = socket.data.vehicleType;
+    const driverId = socket.userId;
 
-    // ✅ Fetch pending and searching bookings
-    const pendingBookings = await BookingModel.find({
-      status: { $in: ["pending", "searching"] },
-    })
-      .sort({ createdAt: -1 })
-      .populate({
-        path: "customerId",
-        select: "fullName profilePictureUrl phoneNumber",
-      })
+    // Defensive: If for some reason required fields aren't set
+    if (!vehicleType || !driverId) {
+      console.log("Invalid driver session");
+      socket.emit("error", { message: "Invalid driver session" });
+      return;
+    }
+    // Fetching driver's service areas
+    const driver = await DriverModel.findById(driverId)
+      .select("serviceAreas")
       .lean();
+    if (!driver) {
+      socket.emit("error", { message: "Driver not found" });
+      return;
+    }
+    const driverServiceAreas = driver.serviceAreas || [];
 
-    // ✅ Filter by NEW location radius
-    const nearbyBookings = pendingBookings.filter((booking) => {
-      if (booking.selectedVehicle.key !== vehicleType) {
-        return false;
-      }
+    // Fetch ASAP and scheduled bookings in parallel
+    const [asapBookings, scheduledBookings] = await Promise.all([
+      BookingModel.find({
+        status: "searching",
+        "bookingType.type": "asap",
+        "selectedVehicle.key": vehicleType,
+      })
+        .sort({ createdAt: -1 })
+        .populate({
+          path: "customerId",
+          select: "fullName profilePictureUrl phoneNumber",
+        })
+        .lean(),
+      BookingModel.find({
+        status: "pending",
+        "bookingType.type": "schedule",
+        "selectedVehicle.key": vehicleType,
+        requestedDrivers: { $nin: [driverId] },
+      })
+        .sort({ "bookingType.value": 1 })
+        .populate({
+          path: "customerId",
+          select: "fullName profilePictureUrl phoneNumber",
+        })
+        .lean(),
+    ]);
+
+    console.log(
+      `🔍 Found ${asapBookings.length} ASAP bookings, ${scheduledBookings.length} scheduled bookings`,
+    );
+
+    // Filter ASAP bookings by proximity
+    const nearbyAsapBookings = asapBookings.filter((booking: any) => {
       const distance = calculateDistance(
-        {
-          lat: booking.pickUp.coords.lat,
-          lng: booking.pickUp.coords.lng,
-        },
-        {
-          lat: location.lat,
-          lng: location.lng,
-        },
+        { lat: booking.pickUp.coords.lat, lng: booking.pickUp.coords.lng },
+        { lat: location.lat, lng: location.lng },
       );
-      return distance <= booking.currentRadiusKm;
+      return distance <= (booking.currentRadiusKm || 5);
     });
 
-    const formattedPendingBookings = nearbyBookings.map((booking) => {
-      const { customerId, ...rest } = booking as any;
+    // Filter scheduled bookings by service area
+    const eligibleScheduledBookings = scheduledBookings.filter(
+      (booking: any) => {
+        const pickupCity = extractCityFromCoords(booking.pickUp.coords);
+        if (!pickupCity) return false;
+        return (
+          driverServiceAreas.includes(pickupCity) ||
+          driverServiceAreas.includes("Metro Manila")
+        );
+      },
+    );
+
+    console.log(
+      `✅ ${nearbyAsapBookings.length} ASAP bookings within radius, ` +
+        `${eligibleScheduledBookings.length} scheduled bookings in service areas`,
+    );
+
+    // Combine and format
+    const allEligibleBookings = [
+      ...nearbyAsapBookings,
+      ...eligibleScheduledBookings,
+    ];
+
+    const formattedBookings = allEligibleBookings.map((booking: any) => {
+      const temporaryRoom = `BOOKING_${booking._id}`;
+      socket.join(temporaryRoom);
+
+      const { customerId, ...rest } = booking;
+      const distance = calculateDistance(
+        { lat: booking.pickUp.coords.lat, lng: booking.pickUp.coords.lng },
+        { lat: location.lat, lng: location.lng },
+      );
       return {
         ...rest,
+        distanceFromPickup: distance,
         client: {
-          id: customerId._id,
-          name: customerId.fullName,
-          profilePictureUrl: customerId.profilePictureUrl,
-          phoneNumber: customerId.phoneNumber,
+          id: customerId?._id,
+          name: customerId?.fullName,
+          profilePictureUrl: customerId?.profilePictureUrl,
+          phoneNumber: customerId?.phoneNumber,
         },
       };
     });
 
     console.log(
-      `📦 Driver ${socket.userId} now has ${nearbyBookings.length} nearby bookings`,
+      `📦 Driver ${socket.userId} sees ${formattedBookings.length} total bookings ` +
+        `(${nearbyAsapBookings.length} ASAP + ${eligibleScheduledBookings.length} scheduled)`,
     );
 
-    // ✅ Send updated bookings list
     socket.emit("pendingBookingsUpdated", {
-      bookings: formattedPendingBookings,
+      bookings: formattedBookings,
     });
   });
 };
 
 export const setDriverAvailable = (socket: CustomSocket) => {
   const on = withErrorHandling(socket);
+
   on(
     "setAvailability",
     async (data: { bookingId: string; clientId: string }) => {
       socket.join(SOCKET_ROOMS.AVAILABLE);
       console.log(`✅ Driver ${socket.userId} joined AVAILABLE room`);
 
-      await BookingModel.findOneAndUpdate(
+      // bookingId and clientId must be present, just for defensive clarity
+      if (!data.bookingId || !data.clientId) {
+        socket.emit("error", { message: "Missing bookingId or clientId" });
+        return;
+      }
+
+      // Complete booking in DB
+      const updatedBooking = await BookingModel.findOneAndUpdate(
         { _id: data.bookingId },
         {
           status: "completed",
@@ -185,73 +254,119 @@ export const setDriverAvailable = (socket: CustomSocket) => {
         { new: true },
       );
 
-      // ✅ Send push notification to the client
+      if (!updatedBooking) {
+        socket.emit("error", { message: "Booking not found or not updated" });
+        return;
+      }
+
+      // Send push notification to client
       await sendNotifToClient(
         data.clientId,
         "📦 Delivery Completed!",
         "Your package has been delivered successfully. Tap to view proof of delivery.",
         {
-          // bookingId: data.bookingId,
           type: "booking_completed",
         },
       );
 
-      // ✅ Fetch pending and searching bookings
-      const pendingBookings = await BookingModel.find({
-        status: { $in: ["pending", "searching"] },
-      })
-        .sort({ createdAt: -1 })
-        .populate({
-          path: "customerId",
-          select: "fullName profilePictureUrl phoneNumber",
-        })
-        .lean();
-
       const location = socket.data.location;
       const vehicleType = socket.data.vehicleType;
+      const driverId = socket.userId;
 
-      if (!location) {
-        throw new Error("Location is required when going on duty");
+      if (!location || !vehicleType || !driverId) {
+        socket.emit("error", {
+          message: "Driver not ready for availability update",
+        });
+        return;
       }
 
-      // ✅ Filter by location radius
-      const nearbyBookings = pendingBookings.filter((booking) => {
-        if (booking.selectedVehicle.key !== vehicleType) {
-          return false;
-        }
+      // Get driver and service areas
+      const driver = await DriverModel.findById(driverId)
+        .select("serviceAreas")
+        .lean();
 
+      if (!driver) {
+        socket.emit("error", { message: "Driver not found" });
+        return;
+      }
+      const driverServiceAreas = driver.serviceAreas || [];
+
+      // Fetch eligible bookings in parallel
+      const [asapBookings, scheduledBookings] = await Promise.all([
+        BookingModel.find({
+          status: "searching",
+          "bookingType.type": "asap",
+          "selectedVehicle.key": vehicleType,
+        })
+          .sort({ createdAt: -1 })
+          .populate({
+            path: "customerId",
+            select: "fullName profilePictureUrl phoneNumber",
+          })
+          .lean(),
+        BookingModel.find({
+          status: "pending",
+          "bookingType.type": "schedule",
+          "selectedVehicle.key": vehicleType,
+        })
+          .sort({ "bookingType.value": 1 })
+          .populate({
+            path: "customerId",
+            select: "fullName profilePictureUrl phoneNumber",
+          })
+          .lean(),
+      ]);
+
+      // Filter (same logic as before)
+      const nearbyAsapBookings = asapBookings.filter((booking: any) => {
         const distance = calculateDistance(
-          {
-            lat: booking.pickUp.coords.lat,
-            lng: booking.pickUp.coords.lng,
-          },
-          {
-            lat: location.lat,
-            lng: location.lng,
-          },
+          { lat: booking.pickUp.coords.lat, lng: booking.pickUp.coords.lng },
+          { lat: location.lat, lng: location.lng },
         );
-        return distance <= booking.currentRadiusKm;
+        return distance <= (booking.currentRadiusKm || 5);
       });
 
-      const formattedPendingBookings = nearbyBookings.map((booking) => {
-        const { customerId, ...rest } = booking as any;
+      const eligibleScheduledBookings = scheduledBookings.filter(
+        (booking: any) => {
+          const pickupCity = extractCityFromCoords(booking.pickUp.coords);
+          if (!pickupCity) return false;
+          return (
+            driverServiceAreas.includes(pickupCity) ||
+            driverServiceAreas.includes("Metro Manila")
+          );
+        },
+      );
+
+      const allEligibleBookings = [
+        ...nearbyAsapBookings,
+        ...eligibleScheduledBookings,
+      ];
+
+      const formattedBookings = allEligibleBookings.map((booking: any) => {
+        const { customerId, ...rest } = booking;
+        const distance = calculateDistance(
+          { lat: booking.pickUp.coords.lat, lng: booking.pickUp.coords.lng },
+          { lat: location.lat, lng: location.lng },
+        );
         return {
           ...rest,
+          distanceFromPickup: distance,
           client: {
-            id: customerId._id,
-            name: customerId.fullName,
-            profilePictureUrl: customerId.profilePictureUrl,
-            phoneNumber: customerId.phoneNumber,
+            id: customerId?._id,
+            name: customerId?.fullName,
+            profilePictureUrl: customerId?.profilePictureUrl,
+            phoneNumber: customerId?.phoneNumber,
           },
         };
       });
 
       console.log(
-        `📦 Found ${nearbyBookings.length} nearby bookings for driver ${socket.userId}`,
+        `📦 Found ${formattedBookings.length} bookings for driver ${socket.userId} ` +
+          `(${nearbyAsapBookings.length} ASAP + ${eligibleScheduledBookings.length} scheduled)`,
       );
 
       socket.emit("pendingBookingsUpdated", {
-        bookings: formattedPendingBookings,
+        bookings: formattedBookings,
       });
     },
   );

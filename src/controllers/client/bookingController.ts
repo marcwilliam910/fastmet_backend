@@ -44,7 +44,6 @@ export const getBookingsByStatus: RequestHandler = async (req, res) => {
   /* -------------------------------------------------
        1. Fetch paginated bookings
     -------------------------------------------------- */
-
   const bookings = await BookingModel.find({
     customerId: new mongoose.Types.ObjectId(clientId),
     status,

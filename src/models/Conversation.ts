@@ -24,8 +24,24 @@ const ConversationSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+// Indexes for efficient querying
+// 1. Client conversations (already exists)
 ConversationSchema.index({ client: 1 });
+
+// 2. Driver conversations (already exists)
 ConversationSchema.index({ driver: 1 });
+
+// 3. Client conversations pagination: client + updatedAt (desc)
+ConversationSchema.index({ client: 1, updatedAt: -1 });
+
+// 4. Driver conversations pagination: driver + updatedAt (desc)
+ConversationSchema.index({ driver: 1, updatedAt: -1 });
+
+// 5. Client unread count queries: client + unreadCount.client
+ConversationSchema.index({ client: 1, "unreadCount.client": 1 });
+
+// 6. Driver unread count queries: driver + unreadCount.driver
+ConversationSchema.index({ driver: 1, "unreadCount.driver": 1 });
 
 const ConversationModel = mongoose.model("Conversation", ConversationSchema);
 export default ConversationModel;

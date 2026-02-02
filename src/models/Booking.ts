@@ -196,6 +196,7 @@ const bookingSchema: Schema = new Schema<IBooking>(
           packageImageUrl: null,
         },
       },
+      _id: false,
     },
     note: {
       type: String,
@@ -235,17 +236,55 @@ const bookingSchema: Schema = new Schema<IBooking>(
       default: 0.1, // 100 meters
     },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
-// Create index for efficient queries
+// Indexes for efficient querying
+// 1. Client bookings pagination: customerId + status + createdAt (desc)
+bookingSchema.index({ customerId: 1, status: 1, createdAt: -1 });
+
+// 2. Client cancelled bookings: customerId + status + cancelledAt (desc)
+bookingSchema.index({ customerId: 1, status: 1, cancelledAt: -1 });
+
+// 3. Driver bookings: driverId + status
+bookingSchema.index({ driverId: 1, status: 1 });
+
+// 4. Driver scheduled bookings with date filter: driverId + status + bookingType.value
+bookingSchema.index({ driverId: 1, status: 1, "bookingType.value": 1 });
+
+// 5. ASAP bookings search: status + bookingType.type + selectedVehicle.key + createdAt (desc)
 bookingSchema.index({
   status: 1,
-  requestedDrivers: 1,
-  "bookingType.value": 1,
-  notificationSent: 1,
-  driverId: 1,
+  "bookingType.type": 1,
+  "selectedVehicle.key": 1,
+  createdAt: -1,
 });
+
+// 6. Scheduled bookings search: status + bookingType.type + selectedVehicle.key + bookingType.value
+bookingSchema.index({
+  status: 1,
+  "bookingType.type": 1,
+  "selectedVehicle.key": 1,
+  "bookingType.value": 1,
+});
+
+bookingSchema.index({
+  status: 1,
+  "bookingType.type": 1,
+  "selectedVehicle.key": 1,
+  "bookingType.value": 1,
+  requestedDrivers: 1,
+});
+
+// 7. Active booking check: status + driverId
+bookingSchema.index({ status: 1, driverId: 1 });
+
+// 8. Requested drivers check: requestedDrivers array
+// Note: bookingRef is already indexed automatically due to unique constraint
+bookingSchema.index({ requestedDrivers: 1 });
+
+// 10. Driver completed bookings aggregation: driverId + status + createdAt (desc)
+bookingSchema.index({ driverId: 1, status: 1, createdAt: -1 });
 
 const BookingModel = model<IBooking>("Booking", bookingSchema);
 export default BookingModel;

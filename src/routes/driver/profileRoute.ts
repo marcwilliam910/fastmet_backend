@@ -1,7 +1,7 @@
 import { Router } from "express";
 import {
   getDriverStatus,
-  updateDriverProfile,
+  addDriverProfile,
   uploadMultipleDriverImages,
 } from "../../controllers/driver/profileController";
 import { upload } from "../../utils/mutler";
@@ -9,11 +9,11 @@ import { upload } from "../../utils/mutler";
 const router = Router();
 
 router.get("/status", getDriverStatus);
-router.patch("/", upload.single("profilePicture"), updateDriverProfile);
+router.post("/", upload.single("profilePicture"), addDriverProfile);
 router.post(
   "/documents-upload",
   upload.array("images"),
-  uploadMultipleDriverImages
+  uploadMultipleDriverImages,
 );
 
 export default router;

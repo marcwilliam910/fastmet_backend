@@ -1,6 +1,6 @@
 import { Server } from "socket.io";
 import { CustomSocket } from "../../socket";
-import BookingModel from "../../../models/Booking";
+import BookingModel, { IBooking } from "../../../models/Booking";
 import { withErrorHandling } from "../../../utils/socketWrapper";
 import { SOCKET_ROOMS } from "../../../utils/constants";
 import {
@@ -10,104 +10,6 @@ import {
 import mongoose from "mongoose";
 import { sendNotifToClient } from "../../../utils/pushNotifications";
 import DriverModel from "../../../models/Driver";
-
-// export const acceptBooking = (socket: CustomSocket, io: Server) => {
-//   const on = withErrorHandling(socket);
-
-//   on(
-//     "acceptBooking",
-//     async ({
-//       bookingId,
-//       driverId,
-//       type,
-//     }: {
-//       bookingId: string;
-//       driverId: string;
-//       type: "asap" | "schedule" | "pooling"; //remove ASAP
-//     }) => {
-//       if (!bookingId || !driverId)
-//         throw new Error("bookingId and driverId is required");
-
-//       // avoid overlapping scheduled bookings
-//       const scheduledBookings = await BookingModel.find({
-//         driverId: driverId,
-//         status: "scheduled",
-//         "bookingType.type": "schedule",
-//       });
-
-//       if (type === "schedule") {
-//         const result = await canAcceptScheduledBooking(
-//           bookingId,
-//           scheduledBookings,
-//         );
-
-//         if (!result.ok) {
-//           socket.emit("acceptBookingError", {
-//             message: result.reason,
-//           });
-//           return;
-//         }
-//       }
-//       if (type === "asap") {
-//         const result = await canAcceptAsapBooking(bookingId, scheduledBookings);
-
-//         if (!result.ok) {
-//           socket.emit("acceptBookingError", {
-//             message: result.reason,
-//           });
-//           return;
-//         }
-//       }
-
-//       const booking = await BookingModel.findOneAndUpdate(
-//         { _id: bookingId, status: "pending" },
-
-//         {
-//           driverId: driverId,
-//           status: type === "asap" ? "active" : "scheduled",
-//         },
-//         { new: true },
-//       );
-
-//       if (!booking) {
-//         socket.emit("acceptBookingError", {
-//           message: "This booking has already been accepted by another driver.",
-//         });
-//         return;
-//       }
-
-//       const room = `BOOKING_${bookingId}`;
-
-//       // ✅ Mark driver as unavailable if they accepted an ASAP booking (on a trip now)
-//       if (type === "asap") {
-//         socket.leave(SOCKET_ROOMS.AVAILABLE);
-//         console.log(
-//           `✅ Driver ${socket.userId} accepted booking ${bookingId} and is now UNAVAILABLE`,
-//         );
-//       }
-
-//       // Notify the client who booked
-//       // for in-app toast
-//       io.to(booking.customerId.toString()).emit("bookingAccepted", {
-//         customerId: booking.customerId,
-//       });
-//       // for push notif
-//       await sendNotifToClient(
-//         booking.customerId.toString(),
-//         "📦 Booking Accepted!",
-//         "Your booking request has been accepted by a driver. Tap to view details.",
-//       );
-
-//       // Confirm to driver
-//       socket.emit("acceptanceConfirmed", { bookingId, bookingType: type });
-
-//       // Notify other drivers this booking is taken
-//       io.to(room).emit("bookingTaken", { bookingId });
-
-//       io.in(room).socketsLeave(room);
-//     },
-//   );
-// };
 
 export const driverLocation = (socket: CustomSocket, io: Server) => {
   socket.on(
@@ -121,7 +23,17 @@ export const driverLocation = (socket: CustomSocket, io: Server) => {
       bookingId: string;
       driverLoc: { lat: number; lng: number; heading: number };
     }) => {
-      if (!driverLoc || !clientUserId || !bookingId) return;
+      // Early validation
+      if (
+        !driverLoc ||
+        !clientUserId ||
+        !bookingId ||
+        typeof driverLoc.lat !== "number" ||
+        typeof driverLoc.lng !== "number" ||
+        typeof driverLoc.heading !== "number"
+      ) {
+        return;
+      }
 
       console.log(`📍 Sending driver location to client ${clientUserId}`);
 
@@ -139,14 +51,28 @@ export const handleStartScheduledTrip = (socket: CustomSocket, io: Server) => {
     async (data: { bookingId: string; driverId: string }) => {
       const { bookingId, driverId } = data;
 
+      if (!bookingId || !driverId) {
+        socket.emit("startScheduledTripError", {
+          message: "Missing required fields",
+        });
+        return;
+      }
+
       console.log(`🚗 Driver ${driverId} starting scheduled trip ${bookingId}`);
 
-      const hasActive = await BookingModel.exists({
-        driverId: new mongoose.Types.ObjectId(driverId),
-        status: "active",
-      });
-
-      console.log("has active: ", hasActive);
+      // Parallelize: Check for active booking and fetch the scheduled booking
+      const [hasActive, booking] = await Promise.all([
+        BookingModel.exists({
+          driverId: new mongoose.Types.ObjectId(driverId),
+          status: "active",
+        }),
+        BookingModel.findById(bookingId)
+          .populate({
+            path: "customerId",
+            select: "fullName profilePictureUrl phoneNumber",
+          })
+          .lean(),
+      ]);
 
       if (hasActive) {
         socket.emit("startScheduledTripError", {
@@ -155,20 +81,13 @@ export const handleStartScheduledTrip = (socket: CustomSocket, io: Server) => {
         return;
       }
 
-      // First find without populate for validation
-      const booking = await BookingModel.findById(bookingId)
-        .populate({
-          path: "customerId",
-          select: "fullName profilePictureUrl phoneNumber",
-        })
-        .lean();
-
       if (!booking) {
         socket.emit("startScheduledTripError", {
           message: "Booking not found",
         });
         return;
       }
+
       // Verify it's the correct driver
       if (booking.driverId?.toString() !== driverId) {
         socket.emit("startScheduledTripError", {
@@ -199,7 +118,7 @@ export const handleStartScheduledTrip = (socket: CustomSocket, io: Server) => {
         return;
       }
 
-      // ✅ Update using updateOne (more efficient)
+      // Update status to active
       await BookingModel.updateOne(
         { _id: bookingId },
         {
@@ -226,16 +145,6 @@ export const handleStartScheduledTrip = (socket: CustomSocket, io: Server) => {
       socket.emit("scheduledTripStarted", {
         booking: formattedBooking,
       });
-
-      // Get customerId for notification (already have it from booking above)
-      // const customerId = booking.customerId;
-
-      // if (customerId) {
-      //   io.to(`customer_${customerId.toString()}`).emit("driverStarted", {
-      //     bookingId: booking._id,
-      //     message: "Your driver has started the trip and is on the way!",
-      //   });
-      // }
     },
   );
 };
@@ -257,8 +166,16 @@ export const requestAcceptance = (socket: CustomSocket, io: Server) => {
     }) => {
       const { id: driverId, bookingId, clientUserId } = payload;
 
-      // ✅ Check if driver already offered for this booking
-      const booking = await BookingModel.findById(bookingId);
+      if (!driverId || !bookingId || !clientUserId) {
+        socket.emit("requestAcceptanceError", {
+          message: "Missing required fields",
+          bookingId,
+        });
+        return;
+      }
+
+      // Check if driver already offered for this booking (early return for spam prevention)
+      const booking = await BookingModel.findById(bookingId).lean();
 
       if (!booking) {
         socket.emit("requestAcceptanceError", {
@@ -268,17 +185,31 @@ export const requestAcceptance = (socket: CustomSocket, io: Server) => {
         return;
       }
 
-      // ✅ Prevent spam: Check if driver already in requestedDrivers
-      if (booking.requestedDrivers?.some((id) => id.toString() === driverId))
+      // Prevent spam: Check if driver already in requestedDrivers
+      if (booking.requestedDrivers?.some((id) => id.toString() === driverId)) {
         return;
+      }
 
-      // Avoid overlapping scheduled bookings
-      const scheduledBookings = await BookingModel.find({
-        driverId: driverId,
-        status: "scheduled",
-        "bookingType.type": "schedule",
-      });
-      const result = await canAcceptAsapBooking(bookingId, scheduledBookings);
+      // Parallelize independent queries: scheduled bookings, driver info, and total bookings count
+      const [scheduledBookings, driver, totalBookings] = await Promise.all([
+        BookingModel.find({
+          driverId: driverId,
+          status: "scheduled",
+          "bookingType.type": "schedule",
+        }).lean(),
+        DriverModel.findById(driverId).lean(),
+        BookingModel.countDocuments({
+          driverId: new mongoose.Types.ObjectId(driverId),
+          status: "completed",
+        }),
+      ]);
+
+      // Check feasibility (this function will fetch booking again, but it's needed for validation)
+      // Type assertion needed because lean() returns FlattenMaps type which is compatible at runtime
+      const result = await canAcceptAsapBooking(
+        bookingId,
+        scheduledBookings as any as IBooking[],
+      );
 
       if (!result.ok) {
         socket.emit("requestAcceptanceError", {
@@ -288,24 +219,15 @@ export const requestAcceptance = (socket: CustomSocket, io: Server) => {
         return;
       }
 
-      // Get rating
-      const driver = await DriverModel.findById(driverId);
       if (!driver) {
         socket.emit("requestAcceptanceError", {
           message: "Driver not found",
           bookingId,
         });
-        console.log("driver not found");
         return;
       }
 
-      // Get total completed bookings
-      const totalBookings = await BookingModel.countDocuments({
-        driverId: new mongoose.Types.ObjectId(driverId),
-        status: "completed",
-      });
-
-      // ✅ Add driver to requestedDrivers array using $addToSet to prevent duplicates
+      // Add driver to requestedDrivers array using $addToSet to prevent duplicates
       await BookingModel.findByIdAndUpdate(bookingId, {
         $addToSet: { requestedDrivers: driverId },
       });
@@ -329,8 +251,10 @@ export const requestAcceptance = (socket: CustomSocket, io: Server) => {
         });
       } else if (payload.type === "schedule") {
         io.to(clientUserId).emit("acceptanceRequestedSchedule", {
-          ...driverPayload,
-          bookingId,
+          driverOffer: {
+            ...driverPayload,
+            bookingId,
+          },
         });
       }
 
@@ -339,6 +263,7 @@ export const requestAcceptance = (socket: CustomSocket, io: Server) => {
         success: true,
         message: "Your offer has been sent to the customer",
         bookingId,
+        type: payload.type,
       });
     },
   );
@@ -351,6 +276,14 @@ export const cancelOffer = (socket: CustomSocket, io: Server) => {
     "cancelOffer",
     async (payload: { clientId: string; id: string; bookingId: string }) => {
       const { clientId, id, bookingId } = payload;
+
+      if (!clientId || !id || !bookingId) {
+        socket.emit("offerCancelledConfirmed", {
+          bookingId,
+          error: "Missing required fields",
+        });
+        return;
+      }
 
       await BookingModel.updateOne(
         { _id: bookingId },
