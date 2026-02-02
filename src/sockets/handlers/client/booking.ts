@@ -7,6 +7,8 @@ import { DRIVER_RADIUS_KM, SOCKET_ROOMS } from "../../../utils/constants";
 import UserModel from "../../../models/User";
 import { RequestBooking } from "../../../types/booking";
 import mongoose from "mongoose";
+import NotificationModel from "../../../models/Notification";
+import { sendNotifToDriver } from "../../../utils/pushNotifications";
 import DriverModel from "../../../models/Driver";
 import { extractCityFromCoords } from "../../../utils/helpers/locationHelpers";
 
@@ -78,6 +80,21 @@ export const requestAsapBooking = (socket: CustomSocket, io: Server) => {
         if (freshBooking && freshBooking.status === "searching") {
           // Delete the booking
           await BookingModel.findByIdAndDelete(booking._id);
+
+          // Create notification for client
+          await NotificationModel.create({
+            userId: freshBooking.customerId,
+            userType: "Client",
+            title: "Booking Expired",
+            message:
+              "10 minutes has passed but no drivers were available for your delivery request.",
+            type: "booking_expired",
+            data: {
+              bookingId: freshBooking._id,
+              pickUp: freshBooking.pickUp,
+              dropOff: freshBooking.dropOff,
+            },
+          });
 
           // Notify the customer
           socket.emit("bookingExpired", {
@@ -516,17 +533,85 @@ export const pickDriver = (socket: CustomSocket, io: Server) => {
 
       socket.emit(notifyCustomerSocket, { bookingId });
 
-      booking.requestedDrivers?.forEach((requestedDriverId) => {
+      /* ------------------------------------------------------------------ */
+      /* GET CLIENT INFO FOR NOTIFICATIONS                                   */
+      /* ------------------------------------------------------------------ */
+      const client = await UserModel.findById(booking.customerId)
+        .select("fullName")
+        .lean();
+
+      /* ------------------------------------------------------------------ */
+      /* NOTIFY DRIVERS & CREATE NOTIFICATIONS                               */
+      /* ------------------------------------------------------------------ */
+      for (const requestedDriverId of booking.requestedDrivers || []) {
         const requestedDriverIdStr = requestedDriverId.toString();
 
         if (requestedDriverIdStr === driverId) {
           // Accepted driver
           io.to(requestedDriverIdStr).emit(notifyDriverAccepted, { bookingId });
+
+          // Create notification + push for scheduled booking only
+          if (payload.type === "schedule") {
+            const notifMessage = `You have been selected for a scheduled delivery from ${booking.pickUp?.address || "pickup"} to ${booking.dropOff?.address || "destination"}`;
+
+            await NotificationModel.create({
+              userId: driverId,
+              userType: "Driver",
+              title: "Scheduled Booking Confirmed",
+              message: notifMessage,
+              type: "new_scheduled_ride",
+              data: {
+                bookingId: booking._id,
+                scheduledDate: booking.bookingType.value,
+                pickUp: booking.pickUp,
+                dropOff: booking.dropOff,
+                clientName: client?.fullName,
+              },
+            });
+
+            // Send push notification
+            await sendNotifToDriver(
+              driverId,
+              "Scheduled Booking Confirmed",
+              notifMessage,
+              { bookingId: booking._id, type: "new_scheduled_ride" },
+            );
+
+            console.log(`📩 Notification created for driver ${driverId}`);
+          }
         } else {
           // Rejected drivers
           io.to(requestedDriverIdStr).emit("bookingTaken", { bookingId });
+
+          // Create notification + push for rejected drivers (scheduled booking only)
+          if (payload.type === "schedule") {
+            const rejectedMessage = `Another driver was selected for the ${booking.pickUp?.address || "pickup"} to ${booking.dropOff?.address || "destination"} booking.`;
+
+            await NotificationModel.create({
+              userId: requestedDriverIdStr,
+              userType: "Driver",
+              title: "Booking Taken",
+              message: rejectedMessage,
+              type: "booking_taken",
+              data: {
+                bookingId: booking._id,
+              },
+            });
+
+            // Send push notification
+            await sendNotifToDriver(
+              requestedDriverIdStr,
+              "Booking Taken",
+              rejectedMessage,
+              { bookingId: booking._id, type: "booking_taken" },
+            );
+
+            console.log(
+              `📩 Notification created for rejected driver ${requestedDriverIdStr}`,
+            );
+          }
         }
-      });
+      }
 
       // Notify all drivers in temporary room who haven't offered yet
       const temporaryRoom = `BOOKING_${bookingId}`;

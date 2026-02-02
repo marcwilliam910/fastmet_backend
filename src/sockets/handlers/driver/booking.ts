@@ -10,6 +10,7 @@ import {
 import mongoose from "mongoose";
 import { sendNotifToClient } from "../../../utils/pushNotifications";
 import DriverModel from "../../../models/Driver";
+import NotificationModel from "../../../models/Notification";
 
 export const driverLocation = (socket: CustomSocket, io: Server) => {
   socket.on(
@@ -43,7 +44,7 @@ export const driverLocation = (socket: CustomSocket, io: Server) => {
   );
 };
 
-export const handleStartScheduledTrip = (socket: CustomSocket, io: Server) => {
+export const handleStartScheduledTrip = (socket: CustomSocket) => {
   const on = withErrorHandling(socket);
 
   on(
@@ -145,6 +146,26 @@ export const handleStartScheduledTrip = (socket: CustomSocket, io: Server) => {
       socket.emit("scheduledTripStarted", {
         booking: formattedBooking,
       });
+
+      await sendNotifToClient(
+        customerId._id.toString(),
+        "Scheduled Trip Started",
+        "Your driver has started the scheduled trip and is on the way!",
+        {
+          bookingId: bookingId,
+          type: "driver_started_scheduled_trip",
+        },
+      );
+
+      // Get customerId for notification (already have it from booking above)
+      // const customerId = booking.customerId;
+
+      // if (customerId) {
+      //   io.to(`customer_${customerId.toString()}`).emit("driverStarted", {
+      //     bookingId: booking._id,
+      //     message: "Your driver has started the trip and is on the way!",
+      //   });
+      // }
     },
   );
 };
@@ -206,17 +227,33 @@ export const requestAcceptance = (socket: CustomSocket, io: Server) => {
 
       // Check feasibility (this function will fetch booking again, but it's needed for validation)
       // Type assertion needed because lean() returns FlattenMaps type which is compatible at runtime
-      const result = await canAcceptAsapBooking(
-        bookingId,
-        scheduledBookings as any as IBooking[],
-      );
-
-      if (!result.ok) {
-        socket.emit("requestAcceptanceError", {
-          message: result.reason,
+      if (payload.type === "asap") {
+        const result = await canAcceptAsapBooking(
           bookingId,
-        });
-        return;
+          scheduledBookings as any as IBooking[],
+        );
+
+        if (!result.ok) {
+          socket.emit("requestAcceptanceError", {
+            message: result.reason,
+            bookingId,
+          });
+          return;
+        }
+      }
+
+      if (payload.type === "schedule") {
+        const result = await canAcceptScheduledBooking(
+          bookingId,
+          scheduledBookings as any as IBooking[],
+        );
+        if (!result.ok) {
+          socket.emit("requestAcceptanceError", {
+            message: result.reason,
+            bookingId,
+          });
+          return;
+        }
       }
 
       if (!driver) {
@@ -256,6 +293,38 @@ export const requestAcceptance = (socket: CustomSocket, io: Server) => {
             bookingId,
           },
         });
+
+        // Create notification + push for scheduled booking offer
+        const notifMessage = `${payload.name} has offered to handle your scheduled delivery from ${booking.pickUp?.address || "pickup"} to ${booking.dropOff?.address || "destination"}`;
+
+        await NotificationModel.create({
+          userId: clientUserId,
+          userType: "Client",
+          title: "New Driver Offer",
+          message: notifMessage,
+          type: "driver_offer",
+          data: {
+            bookingId: booking._id,
+            driverId,
+            driverName: payload.name,
+            driverRating: driver.rating.average,
+          },
+        });
+
+        // Send push notification
+        await sendNotifToClient(
+          clientUserId,
+          "New Driver Offer",
+          notifMessage,
+          {
+            bookingId: booking._id,
+            type: "driver_offer",
+          },
+        );
+
+        console.log(
+          `📩 Notification sent to client ${clientUserId} for driver offer`,
+        );
       }
 
       // Confirm to driver
@@ -293,6 +362,25 @@ export const cancelOffer = (socket: CustomSocket, io: Server) => {
       socket.emit("offerCancelledConfirmed", { bookingId });
 
       io.to(clientId).emit("offerCancelled", { driverId: id });
+    },
+  );
+};
+
+export const arrivedAtPickup = (socket: CustomSocket) => {
+  const on = withErrorHandling(socket);
+
+  on(
+    "arrivedAtPickup",
+    async (payload: { clientId: string; bookingId: string }) => {
+      await sendNotifToClient(
+        payload.clientId,
+        "Driver Arrived at Pickup",
+        "The driver has arrived at the pickup location. Please assist them with the delivery.",
+        {
+          bookingId: payload.bookingId,
+          type: "driver_arrived_at_pickup",
+        },
+      );
     },
   );
 };

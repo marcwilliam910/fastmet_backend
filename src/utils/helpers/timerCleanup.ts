@@ -1,6 +1,7 @@
-import { Server } from "socket.io";
+import {Server} from "socket.io";
 import BookingModel from "../../models/Booking";
-import { bookingTimers } from "../../sockets/handlers/client/booking";
+import {bookingTimers} from "../../sockets/handlers/client/booking";
+import NotificationModel from "../../models/Notification";
 
 export const restoreBookingTimers = async (io: Server) => {
   console.log("🔄 Restoring booking timers after server restart...");
@@ -20,6 +21,21 @@ export const restoreBookingTimers = async (io: Server) => {
       console.log(
         `⏰ Booking ${booking._id} expired during downtime - deleting`,
       );
+
+      // Create notification for client
+      await NotificationModel.create({
+        userId: booking.customerId,
+        userType: "Client",
+        title: "Booking Expired",
+        message:
+          "10 minutes has passed but no drivers were available for your delivery request.",
+        type: "booking_expired",
+        data: {
+          bookingId: booking._id,
+          pickUp: booking.pickUp,
+          dropOff: booking.dropOff,
+        },
+      });
 
       await BookingModel.findByIdAndDelete(booking._id);
 
@@ -42,6 +58,21 @@ export const restoreBookingTimers = async (io: Server) => {
         const freshBooking = await BookingModel.findById(booking._id);
 
         if (freshBooking && freshBooking.status === "searching") {
+          // Create notification for client
+          await NotificationModel.create({
+            userId: freshBooking.customerId,
+            userType: "Client",
+            title: "Booking Expired",
+            message:
+              "10 minutes has passed but no drivers were available for your delivery request.",
+            type: "booking_expired",
+            data: {
+              bookingId: freshBooking._id,
+              pickUp: freshBooking.pickUp,
+              dropOff: freshBooking.dropOff,
+            },
+          });
+
           await BookingModel.findByIdAndDelete(booking._id);
 
           const temporaryRoom = `BOOKING_${booking._id}`;

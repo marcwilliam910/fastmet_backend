@@ -1,11 +1,15 @@
 // routes/notificationRoute.ts
-import { Router } from "express";
+import {Router} from "express";
 import {
   savePushToken,
   enableNotifications,
   disableNotifications,
   getNotificationSettings,
   testPushNotification,
+  getNotifications,
+  markNotificationAsRead,
+  markAllNotificationsAsRead,
+  getUnreadCount,
 } from "../../controllers/driver/notificationController";
 
 const router = Router();
@@ -19,6 +23,11 @@ router.post("/disable", disableNotifications);
 
 // Get current notification settings
 router.get("/settings", getNotificationSettings);
+
+router.get("/", getNotifications);
+router.get("/unread", getUnreadCount);
+router.patch("/read/:notificationId", markNotificationAsRead);
+router.patch("/read-all", markAllNotificationsAsRead);
 
 // Test notification (optional - remove in production or add admin check)
 router.post("/test", testPushNotification);

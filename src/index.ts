@@ -24,6 +24,7 @@ import vehicleRoute from "./routes/vehicleRoute";
 import {authenticateJWT} from "./middlewares/verifyToken";
 import {startNotificationCron} from "./services/notificationCron";
 // import {migrateSearchConfig} from "./migrate";
+// import {seedNotifications} from "./seedNotifications";
 import {startBookingCleanupCron} from "./services/bookingCleanupCron";
 import {restoreBookingTimers} from "./utils/helpers/timerCleanup";
 
@@ -68,6 +69,7 @@ mongoose
     console.log("MongoDB connected");
 
     // migrateSearchConfig();
+    // seedNotifications();
     server.listen(PORT, () => {
       console.log(`Server running at http://localhost:${PORT}`);
 

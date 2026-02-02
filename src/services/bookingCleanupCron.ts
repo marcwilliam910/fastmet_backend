@@ -1,7 +1,8 @@
-import { Server } from "socket.io";
+import {Server} from "socket.io";
 import cron from "node-cron";
 import BookingModel from "../models/Booking";
-import { bookingTimers } from "../sockets/handlers/client/booking";
+import {bookingTimers} from "../sockets/handlers/client/booking";
+import NotificationModel from "../models/Notification";
 
 export const startBookingCleanupCron = (io: Server) => {
   // Run every 2 minutes to check for expired bookings
@@ -10,10 +11,25 @@ export const startBookingCleanupCron = (io: Server) => {
 
     const expiredBookings = await BookingModel.find({
       status: "searching",
-      createdAt: { $lt: tenMinutesAgo },
+      createdAt: {$lt: tenMinutesAgo},
     });
 
     for (const booking of expiredBookings) {
+      // Create notification for client
+      await NotificationModel.create({
+        userId: booking.customerId,
+        userType: "Client",
+        title: "Booking Expired",
+        message:
+          "10 minutes has passed but no drivers were available for your delivery request.",
+        type: "booking_expired",
+        data: {
+          bookingId: booking._id,
+          pickUp: booking.pickUp,
+          dropOff: booking.dropOff,
+        },
+      });
+
       await BookingModel.findByIdAndDelete(booking._id);
 
       // Notify all drivers in the temporary room
@@ -37,7 +53,7 @@ export const startBookingCleanupCron = (io: Server) => {
 
     if (expiredBookings.length > 0) {
       console.log(
-        `✅ Cron job cleaned up ${expiredBookings.length} expired bookings`
+        `✅ Cron job cleaned up ${expiredBookings.length} expired bookings`,
       );
     }
   });
