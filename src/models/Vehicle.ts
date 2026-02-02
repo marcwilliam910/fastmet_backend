@@ -1,4 +1,4 @@
-import {Schema, model, Document} from "mongoose";
+import { Schema, model, Document, Types } from "mongoose";
 
 interface IPricingTier {
   minKm: number; // inclusive
@@ -19,6 +19,7 @@ export interface ILoadVariant {
   baseFare: number;
   pricingTiers: IPricingTier[];
   isActive: boolean;
+  _id: Types.ObjectId;
 }
 
 interface IService {
@@ -46,25 +47,22 @@ export interface IVehicleType extends Document {
 
 const pricingTierSchema = new Schema<IPricingTier>(
   {
-    minKm: {type: Number, required: true},
-    maxKm: {type: Number},
-    pricePerKm: {type: Number, required: true},
+    minKm: { type: Number, required: true },
+    maxKm: { type: Number },
+    pricePerKm: { type: Number, required: true },
   },
-  {_id: false},
+  { _id: false },
 );
 
-const loadVariantSchema = new Schema<ILoadVariant>(
-  {
-    maxLoadKg: {type: Number, required: true},
-    baseFare: {type: Number, required: true},
-    pricingTiers: {
-      type: [pricingTierSchema],
-      required: true,
-    },
-    isActive: {type: Boolean, default: true},
+const loadVariantSchema = new Schema<ILoadVariant>({
+  maxLoadKg: { type: Number, required: true },
+  baseFare: { type: Number, required: true },
+  pricingTiers: {
+    type: [pricingTierSchema],
+    required: true,
   },
-  {_id: false},
-);
+  isActive: { type: Boolean, default: true },
+});
 
 const serviceSchema = new Schema<IService>(
   {
@@ -102,7 +100,7 @@ const serviceSchema = new Schema<IService>(
       default: true,
     },
   },
-  {_id: false},
+  { _id: false },
 );
 
 // Add search config schema
@@ -129,7 +127,7 @@ const searchConfigSchema = new Schema<ISearchConfig>(
       min: 1000,
     },
   },
-  {_id: false},
+  { _id: false },
 );
 
 const vehicleTypeSchema = new Schema<IVehicleType>(
@@ -173,7 +171,7 @@ const vehicleTypeSchema = new Schema<IVehicleType>(
       default: true,
     },
   },
-  {timestamps: true},
+  { timestamps: true },
 );
 
 export const VehicleType = model<IVehicleType>(

@@ -1,8 +1,8 @@
-import {RequestHandler} from "express";
+import { RequestHandler } from "express";
 import DriverModel from "../../models/Driver";
 import cloudinary from "../../config/cloudinary";
 import Driver from "../../models/Driver";
-import {getUserId} from "../../utils/helpers/getUserId";
+import { getUserId } from "../../utils/helpers/getUserId";
 import mongoose from "mongoose";
 import {
   getSecureFolderId,
@@ -18,13 +18,17 @@ export const addDriverProfile: RequestHandler = async (req, res) => {
     vehicle,
     license: licenseNumber,
     serviceAreas,
+    vehicleVariant,
   } = req.body as {
     firstName: string;
     lastName: string;
     vehicle: string;
     license: string;
     serviceAreas: string;
+    vehicleVariant: string;
   };
+
+  console.log(vehicleVariant);
 
   // Validation
   if (!driverId) {
@@ -76,7 +80,7 @@ export const addDriverProfile: RequestHandler = async (req, res) => {
   if (licenseNumber && licenseNumber !== driver.licenseNumber) {
     const existingLicense = await DriverModel.findOne({
       licenseNumber,
-      _id: {$ne: driverId},
+      _id: { $ne: driverId },
     });
 
     if (existingLicense) {
@@ -94,6 +98,9 @@ export const addDriverProfile: RequestHandler = async (req, res) => {
   driver.vehicle = new mongoose.Types.ObjectId(vehicle);
   driver.licenseNumber = licenseNumber;
   driver.serviceAreas = serviceAreasArray;
+  driver.vehicleVariant = vehicleVariant
+    ? new mongoose.Types.ObjectId(vehicleVariant)
+    : null;
   driver.registrationStep = 2;
 
   await driver.save();
@@ -101,12 +108,24 @@ export const addDriverProfile: RequestHandler = async (req, res) => {
   // Re-populate vehicle after save
   await driver.populate("vehicle", "key");
 
+  if (driver.vehicleVariant) {
+    await driver.populate("vehicleVariant", "maxLoadKg");
+  }
+
   // Safely get vehicle key
   const vehicleKey =
     driver.vehicle &&
     typeof driver.vehicle === "object" &&
     "key" in driver.vehicle
-      ? (driver.vehicle as {key: string}).key
+      ? (driver.vehicle as { key: string }).key
+      : null;
+
+  // safely get vehicle variant max load
+  const vehicleVariantLoad =
+    driver.vehicleVariant &&
+    typeof driver.vehicleVariant === "object" &&
+    "maxLoadKg" in driver.vehicleVariant
+      ? (driver.vehicleVariant as { maxLoadKg: string }).maxLoadKg
       : null;
 
   return res.status(200).json({
@@ -115,7 +134,9 @@ export const addDriverProfile: RequestHandler = async (req, res) => {
       id: driver._id,
       firstName: driver.firstName,
       lastName: driver.lastName,
-      vehicle: vehicleKey,
+      vehicle: vehicleVariantLoad
+        ? `${vehicleKey}_${vehicleVariantLoad}`
+        : vehicleKey,
       licenseNumber: driver.licenseNumber,
       profilePictureUrl: driver.profilePictureUrl,
     },
@@ -125,17 +146,17 @@ export const addDriverProfile: RequestHandler = async (req, res) => {
 export const uploadMultipleDriverImages: RequestHandler = async (req, res) => {
   try {
     const driverId = getUserId(req);
-    const {step} = req.body;
+    const { step } = req.body;
     const imageTypes: string[] = Array.isArray(req.body.types)
       ? req.body.types
       : [req.body.types];
 
     if (!driverId) {
-      return res.status(400).json({message: "driverId required"});
+      return res.status(400).json({ message: "driverId required" });
     }
 
     if (!req.files || (req.files as any[]).length === 0) {
-      return res.status(400).json({message: "No files uploaded"});
+      return res.status(400).json({ message: "No files uploaded" });
     }
 
     const files = req.files as Express.Multer.File[];
@@ -150,7 +171,7 @@ export const uploadMultipleDriverImages: RequestHandler = async (req, res) => {
 
     // Convert array to object
     const uploadedResults: Record<string, string> = {};
-    uploadResults.forEach(({type, url}) => {
+    uploadResults.forEach(({ type, url }) => {
       uploadedResults[type] = url;
     });
 
@@ -163,8 +184,8 @@ export const uploadMultipleDriverImages: RequestHandler = async (req, res) => {
 
     await Driver.findByIdAndUpdate(
       driverId,
-      {...updateObject, registrationStep: step},
-      {new: true},
+      { ...updateObject, registrationStep: step },
+      { new: true },
     );
 
     return res.json({
@@ -174,7 +195,7 @@ export const uploadMultipleDriverImages: RequestHandler = async (req, res) => {
     });
   } catch (err) {
     console.error(err);
-    return res.status(500).json({message: "Upload failed"});
+    return res.status(500).json({ message: "Upload failed" });
   }
 };
 
@@ -182,13 +203,13 @@ export const getDriverStatus: RequestHandler = async (req, res) => {
   const driverId = getUserId(req);
 
   if (!driverId) {
-    return res.status(400).json({message: "driverId required"});
+    return res.status(400).json({ message: "driverId required" });
   }
 
   const driver = await Driver.findById(driverId);
 
   if (!driver) {
-    return res.status(404).json({message: "Driver not found"});
+    return res.status(404).json({ message: "Driver not found" });
   }
 
   return res.json({
