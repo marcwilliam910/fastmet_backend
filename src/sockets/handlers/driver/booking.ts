@@ -72,6 +72,10 @@ export const handleStartScheduledTrip = (socket: CustomSocket) => {
             path: "customerId",
             select: "fullName profilePictureUrl phoneNumber",
           })
+          .populate({
+            path: "selectedVehicle.vehicleTypeId",
+            select: "name freeServices",
+          })
           .lean(),
       ]);
 
@@ -131,7 +135,7 @@ export const handleStartScheduledTrip = (socket: CustomSocket) => {
 
       console.log(`✅ Trip ${bookingId} status changed: scheduled → active`);
 
-      const { customerId, ...rest } = booking as any;
+      const { customerId, selectedVehicle, ...rest } = booking as any;
 
       const formattedBooking = {
         ...rest,
@@ -140,6 +144,9 @@ export const handleStartScheduledTrip = (socket: CustomSocket) => {
           name: customerId.fullName,
           profilePictureUrl: customerId.profilePictureUrl,
           phoneNumber: customerId.phoneNumber,
+        },
+        selectedVehicle: {
+          freeServices: selectedVehicle?.vehicleTypeId?.freeServices || [],
         },
       };
 
@@ -196,7 +203,12 @@ export const requestAcceptance = (socket: CustomSocket, io: Server) => {
       }
 
       // Check if driver already offered for this booking (early return for spam prevention)
-      const booking = await BookingModel.findById(bookingId).lean();
+      const booking = await BookingModel.findById(bookingId)
+        .populate({
+          path: "selectedVehicle.vehicleTypeId",
+          select: "name freeServices",
+        })
+        .lean();
 
       if (!booking) {
         socket.emit("requestAcceptanceError", {

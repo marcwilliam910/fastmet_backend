@@ -10,21 +10,17 @@ export const getVehicles: RequestHandler = async (req, res) => {
 
   // Return just names if requested
   if (req.query.fields === "name") {
-    // let formattedVehicles = vehicleTypes.map((v) => {
-    //   if(v.variants && v.variants.length > 1) {
-    //     return v.variants.map((variant) => ({value: v._id, label: v.name, key: v.key}));
-    //   }
-    // });
 
     return res.json(
       vehicleTypes.map((v) => {
-        const variants = v.variants.length > 1 ? v.variants : [];
+        if(!v.isActive) return null;
+
 
         return {
           value: v._id,
           label: v.name,
           key: v.key,
-          variants: variants.map((variant) => {
+          variants: v.variants.map((variant) => {
             if (variant.isActive) {
               return {
                 label: variant.maxLoadKg,

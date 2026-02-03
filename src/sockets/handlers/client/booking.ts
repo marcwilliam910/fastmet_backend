@@ -5,12 +5,13 @@ import { CustomSocket } from "../../socket";
 import { calculateDistance } from "../../../utils/helpers/distanceCalculator";
 import { DRIVER_RADIUS_KM, SOCKET_ROOMS } from "../../../utils/constants";
 import UserModel from "../../../models/User";
-import { RequestBooking } from "../../../types/booking";
+import { RequestBooking, Service } from "../../../types/booking";
 import mongoose from "mongoose";
 import NotificationModel from "../../../models/Notification";
 import { sendNotifToDriver } from "../../../utils/pushNotifications";
 import DriverModel from "../../../models/Driver";
 import { extractCityFromCoords } from "../../../utils/helpers/locationHelpers";
+import { VehicleType } from "../../../models/Vehicle";
 
 export const bookingTimers = new Map<string, NodeJS.Timeout>();
 
@@ -38,7 +39,6 @@ export const requestAsapBooking = (socket: CustomSocket, io: Server) => {
     /* ------------------------------------------------------------------ */
     /* 1. Create booking (searching immediately)                           */
     /* ------------------------------------------------------------------ */
-    const vehicleType = data.selectedVehicle.key;
     const searchConfig = data.selectedVehicle.searchConfig;
 
     const { initialRadiusKm, incrementKm, maxRadiusKm, intervalMs } =
@@ -46,10 +46,18 @@ export const requestAsapBooking = (socket: CustomSocket, io: Server) => {
 
     const booking = await BookingModel.create({
       ...data,
+      selectedVehicle: {
+        vehicleTypeId: new mongoose.Types.ObjectId(String(data.selectedVehicle._id)),
+        variantId: data.selectedVehicle.variant ? new mongoose.Types.ObjectId(String(data.selectedVehicle.variant._id)) : null,
+      },
       status: "searching",
       searchStep: 1,
       currentRadiusKm: initialRadiusKm,
     });
+
+    const vehicleType = data.selectedVehicle.variant ? `${data.selectedVehicle.key}_${data.selectedVehicle.variant.maxLoadKg}` : data.selectedVehicle.key;
+    console.log("VEHICLE TYPE: ", vehicleType);
+
 
     const client = await UserModel.findById(booking.customerId)
       .select("fullName profilePictureUrl phoneNumber email")
@@ -142,9 +150,19 @@ export const requestAsapBooking = (socket: CustomSocket, io: Server) => {
     /* ------------------------------------------------------------------ */
     const driverList = new Set<string>();
     const runSearchStep = async () => {
-      const freshBooking = await BookingModel.findById(booking._id).lean();
+      // Populate and type-check vehicleTypeId to assure type safety for freeServices
+      const freshBooking = await BookingModel.findById(booking._id)
+        .populate<{ 
+          selectedVehicle: { 
+            vehicleTypeId: { name: string; freeServices: Partial<Service>[] } 
+          } 
+        }>("selectedVehicle.vehicleTypeId", "name freeServices")
+        .lean();
 
-      if (!freshBooking || freshBooking.status !== "searching") {
+      if (
+        !freshBooking ||
+        freshBooking.status !== "searching"
+      ) {
         return;
       }
 
@@ -189,13 +207,14 @@ export const requestAsapBooking = (socket: CustomSocket, io: Server) => {
           };
         })
         .filter(Boolean) as {
-        socket: any;
-        driverId: string;
-        distanceKm: number;
-      }[];
+          socket: any;
+          driverId: string;
+          distanceKm: number;
+        }[];
 
       if (newDrivers.length > 0) {
         newDrivers.map((d) => driverList.add(d.driverId));
+
 
         newDrivers.forEach(({ socket, distanceKm }) => {
           socket.join(temporaryRoom);
@@ -215,7 +234,9 @@ export const requestAsapBooking = (socket: CustomSocket, io: Server) => {
             dropOff: freshBooking.dropOff,
             bookingType: freshBooking.bookingType,
             routeData: freshBooking.routeData,
-            selectedVehicle: freshBooking.selectedVehicle,
+            selectedVehicle: {
+              freeServices: freshBooking.selectedVehicle.vehicleTypeId?.freeServices || [],
+            },
             addedServices: freshBooking.addedServices,
             paymentMethod: freshBooking.paymentMethod,
             note: freshBooking.note,
@@ -276,6 +297,10 @@ export const requestScheduleBooking = (socket: CustomSocket, io: Server) => {
     // 1. Save booking to DB
     const booking = await BookingModel.create({
       ...data,
+      selectedVehicle: {
+        vehicleTypeId: new mongoose.Types.ObjectId(String(data.selectedVehicle._id)),
+        variantId: data.selectedVehicle.variant ? new mongoose.Types.ObjectId(String(data.selectedVehicle.variant._id)) : null,
+      },
       status: "pending",
     });
 
@@ -296,7 +321,12 @@ export const requestScheduleBooking = (socket: CustomSocket, io: Server) => {
       message: "You will be notified when a driver accepts your request.",
     });
 
-    // 2. Payload
+    // 2. Fetch VehicleType for name and freeServices
+    const vehicleTypeDoc = await VehicleType.findById(data.selectedVehicle._id)
+      .select("name freeServices")
+      .lean();
+
+    // 3. Payload
     const driverPayload = {
       client: {
         id: client._id,
@@ -312,13 +342,16 @@ export const requestScheduleBooking = (socket: CustomSocket, io: Server) => {
         value: new Date(booking.bookingType.value),
       },
       routeData: booking.routeData,
-      selectedVehicle: booking.selectedVehicle,
+      selectedVehicle: {
+        freeServices: vehicleTypeDoc?.freeServices || [],
+      },
       addedServices: booking.addedServices,
       paymentMethod: booking.paymentMethod,
     };
 
-    // 3. Determine vehicle type
-    const vehicleType = booking.selectedVehicle.key;
+    // 4. Determine vehicle type
+    const vehicleType = data.selectedVehicle.variant ? `${data.selectedVehicle.key}_${data.selectedVehicle.variant.maxLoadKg}` : data.selectedVehicle.key;
+    console.log("VEHICLE TYPE: ", vehicleType);
 
     if (!vehicleType) {
       socket.emit("booking_request_failed", {
@@ -327,7 +360,7 @@ export const requestScheduleBooking = (socket: CustomSocket, io: Server) => {
       return;
     }
 
-    // 4. Extract pickup city from address
+    // 5. Extract pickup city from address
     const pickupCity = extractCityFromCoords(booking.pickUp.coords);
 
     if (!pickupCity) {
@@ -346,7 +379,7 @@ export const requestScheduleBooking = (socket: CustomSocket, io: Server) => {
 
     const vehicleRoom = `VEHICLE_${vehicleType.toUpperCase()}`;
 
-    // 5. Get available & on-duty drivers with matching vehicle type
+    // 6. Get available & on-duty drivers with matching vehicle type
     const availableDriverSockets = await io
       .in(SOCKET_ROOMS.ON_DUTY)
       .in(SOCKET_ROOMS.AVAILABLE)
@@ -357,7 +390,7 @@ export const requestScheduleBooking = (socket: CustomSocket, io: Server) => {
       `🔍 Found ${availableDriverSockets.length} available ${vehicleType} drivers`,
     );
 
-    // 🆕 6. OPTIMIZED: Batch query all driver IDs at once
+    // 7. OPTIMIZED: Batch query all driver IDs at once
     const driverIds = availableDriverSockets.map((s) => s.data.userId);
 
     // Single database query for all drivers
@@ -396,14 +429,14 @@ export const requestScheduleBooking = (socket: CustomSocket, io: Server) => {
       `🚗 ${eligibleDrivers.length} ${vehicleType} drivers will receive this booking in ${pickupCity}`,
     );
 
-    // 7. Join eligible drivers to booking room
+    // 8. Join eligible drivers to booking room
     const temporaryRoom = `BOOKING_${booking._id}`;
 
     eligibleDrivers.forEach((driverSocket) => {
       driverSocket.join(temporaryRoom);
     });
 
-    // 8. Emit booking to eligible drivers
+    // 9. Emit booking to eligible drivers
     io.to(temporaryRoom).emit("new_booking_request", driverPayload);
 
     console.log(

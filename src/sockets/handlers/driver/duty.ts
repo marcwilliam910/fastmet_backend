@@ -62,12 +62,16 @@ export const toggleOnDuty = (socket: CustomSocket) => {
             path: "customerId",
             select: "fullName profilePictureUrl phoneNumber",
           })
+          .populate({
+            path: "selectedVehicle.vehicleTypeId",
+            select: "name freeServices",
+          })
           .lean();
 
         let formattedActiveBooking = null;
 
         if (activeBooking && activeBooking.customerId) {
-          const { customerId, ...rest } = activeBooking as any;
+          const { customerId, selectedVehicle, ...rest } = activeBooking as any;
           formattedActiveBooking = {
             ...rest,
             client: {
@@ -75,6 +79,9 @@ export const toggleOnDuty = (socket: CustomSocket) => {
               name: customerId.fullName,
               profilePictureUrl: customerId.profilePictureUrl,
               phoneNumber: customerId.phoneNumber,
+            },
+            selectedVehicle: {
+              freeServices: selectedVehicle?.vehicleTypeId?.freeServices || [],
             },
           };
         }
@@ -124,9 +131,9 @@ export const updateDriverLocation = (socket: CustomSocket) => {
       socket.emit("error", { message: "Invalid driver session" });
       return;
     }
-    // Fetching driver's service areas
+    // Fetching driver's service areas, vehicle, and vehicleVariant
     const driver = await DriverModel.findById(driverId)
-      .select("serviceAreas")
+      .select("serviceAreas vehicle vehicleVariant")
       .lean();
     if (!driver) {
       socket.emit("error", { message: "Driver not found" });
@@ -134,29 +141,46 @@ export const updateDriverLocation = (socket: CustomSocket) => {
     }
     const driverServiceAreas = driver.serviceAreas || [];
 
+    // Driver must have a vehicle assigned
+    if (!driver.vehicle) {
+      socket.emit("error", { message: "Driver has no vehicle assigned" });
+      return;
+    }
+
     // Fetch ASAP and scheduled bookings in parallel
+    // Filter by vehicleTypeId AND variantId (variantId can be null for vehicles without variants)
     const [asapBookings, scheduledBookings] = await Promise.all([
       BookingModel.find({
         status: "searching",
         "bookingType.type": "asap",
-        "selectedVehicle.key": vehicleType,
+        "selectedVehicle.vehicleTypeId": driver.vehicle,
+        "selectedVehicle.variantId": driver.vehicleVariant || null,
       })
         .sort({ createdAt: -1 })
         .populate({
           path: "customerId",
           select: "fullName profilePictureUrl phoneNumber",
         })
+        .populate({
+          path: "selectedVehicle.vehicleTypeId",
+          select: "name freeServices",
+        })
         .lean(),
       BookingModel.find({
         status: "pending",
         "bookingType.type": "schedule",
-        "selectedVehicle.key": vehicleType,
+        "selectedVehicle.vehicleTypeId": driver.vehicle,
+        "selectedVehicle.variantId": driver.vehicleVariant || null,
         requestedDrivers: { $nin: [driverId] },
       })
         .sort({ "bookingType.value": 1 })
         .populate({
           path: "customerId",
           select: "fullName profilePictureUrl phoneNumber",
+        })
+        .populate({
+          path: "selectedVehicle.vehicleTypeId",
+          select: "name freeServices",
         })
         .lean(),
     ]);
@@ -201,7 +225,7 @@ export const updateDriverLocation = (socket: CustomSocket) => {
       const temporaryRoom = `BOOKING_${booking._id}`;
       socket.join(temporaryRoom);
 
-      const { customerId, ...rest } = booking;
+      const { customerId, selectedVehicle, ...rest } = booking;
       const distance = calculateDistance(
         { lat: booking.pickUp.coords.lat, lng: booking.pickUp.coords.lng },
         { lat: location.lat, lng: location.lng },
@@ -214,6 +238,9 @@ export const updateDriverLocation = (socket: CustomSocket) => {
           name: customerId?.fullName,
           profilePictureUrl: customerId?.profilePictureUrl,
           phoneNumber: customerId?.phoneNumber,
+        },
+        selectedVehicle: {
+          freeServices: selectedVehicle?.vehicleTypeId?.freeServices || [],
         },
       };
     });
@@ -280,9 +307,9 @@ export const setDriverAvailable = (socket: CustomSocket) => {
         return;
       }
 
-      // Get driver and service areas
+      // Get driver's service areas, vehicle, and vehicleVariant
       const driver = await DriverModel.findById(driverId)
-        .select("serviceAreas")
+        .select("serviceAreas vehicle vehicleVariant")
         .lean();
 
       if (!driver) {
@@ -291,28 +318,45 @@ export const setDriverAvailable = (socket: CustomSocket) => {
       }
       const driverServiceAreas = driver.serviceAreas || [];
 
+      // Driver must have a vehicle assigned
+      if (!driver.vehicle) {
+        socket.emit("error", { message: "Driver has no vehicle assigned" });
+        return;
+      }
+
       // Fetch eligible bookings in parallel
+      // Filter by vehicleTypeId AND variantId (variantId can be null for vehicles without variants)
       const [asapBookings, scheduledBookings] = await Promise.all([
         BookingModel.find({
           status: "searching",
           "bookingType.type": "asap",
-          "selectedVehicle.key": vehicleType,
+          "selectedVehicle.vehicleTypeId": driver.vehicle,
+          "selectedVehicle.variantId": driver.vehicleVariant || null,
         })
           .sort({ createdAt: -1 })
           .populate({
             path: "customerId",
             select: "fullName profilePictureUrl phoneNumber",
           })
+          .populate({
+            path: "selectedVehicle.vehicleTypeId",
+            select: "name freeServices",
+          })
           .lean(),
         BookingModel.find({
           status: "pending",
           "bookingType.type": "schedule",
-          "selectedVehicle.key": vehicleType,
+          "selectedVehicle.vehicleTypeId": driver.vehicle,
+          "selectedVehicle.variantId": driver.vehicleVariant || null,
         })
           .sort({ "bookingType.value": 1 })
           .populate({
             path: "customerId",
             select: "fullName profilePictureUrl phoneNumber",
+          })
+          .populate({
+            path: "selectedVehicle.vehicleTypeId",
+            select: "name freeServices",
           })
           .lean(),
       ]);
@@ -343,7 +387,7 @@ export const setDriverAvailable = (socket: CustomSocket) => {
       ];
 
       const formattedBookings = allEligibleBookings.map((booking: any) => {
-        const { customerId, ...rest } = booking;
+        const { customerId, selectedVehicle, ...rest } = booking;
         const distance = calculateDistance(
           { lat: booking.pickUp.coords.lat, lng: booking.pickUp.coords.lng },
           { lat: location.lat, lng: location.lng },
@@ -356,6 +400,9 @@ export const setDriverAvailable = (socket: CustomSocket) => {
             name: customerId?.fullName,
             profilePictureUrl: customerId?.profilePictureUrl,
             phoneNumber: customerId?.phoneNumber,
+          },
+          selectedVehicle: {
+            freeServices: selectedVehicle?.vehicleTypeId?.freeServices || [],
           },
         };
       });

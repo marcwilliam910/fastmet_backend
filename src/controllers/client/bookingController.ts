@@ -53,6 +53,10 @@ export const getBookingsByStatus: RequestHandler = async (req, res) => {
       path: "requestedDrivers",
       select: "_id firstName lastName rating profilePictureUrl images",
     })
+    .populate({
+      path: "selectedVehicle.vehicleTypeId",
+      select: "name freeServices",
+    })
     .sort(
       status === "cancelled"
         ? { cancelledAt: -1, _id: -1 }
@@ -114,7 +118,7 @@ export const getBookingsByStatus: RequestHandler = async (req, res) => {
           }))
         : [];
 
-    const { driverId, requestedDrivers: _, ...bookingData } = booking;
+    const { driverId, requestedDrivers: _, selectedVehicle, ...bookingData } = booking as any;
 
     return {
       ...bookingData,
@@ -127,6 +131,10 @@ export const getBookingsByStatus: RequestHandler = async (req, res) => {
           }
         : null,
       requestedDrivers: formattedRequestedDrivers,
+      selectedVehicle: {
+        name: selectedVehicle?.vehicleTypeId?.name || null,
+        freeServices: selectedVehicle?.vehicleTypeId?.freeServices || [],
+      },
     };
   });
 
@@ -152,13 +160,17 @@ export const getBooking: RequestHandler = async (req, res) => {
   }
   const booking = await BookingModel.findById(bookingId)
     .populate("driverId", "_id firstName lastName rating profilePictureUrl")
+    .populate({
+      path: "selectedVehicle.vehicleTypeId",
+      select: "name freeServices",
+    })
     .lean();
 
   if (!booking) {
     return res.status(404).json({ message: "Booking not found" });
   }
 
-  const { driverId, ...bookingData } = booking;
+  const { driverId, selectedVehicle, ...bookingData } = booking as any;
   const driver = booking.driverId as PopulatedDriver | null;
 
   const formattedBooking = {
@@ -171,6 +183,10 @@ export const getBooking: RequestHandler = async (req, res) => {
           profilePictureUrl: driver.profilePictureUrl,
         }
       : null,
+    selectedVehicle: {
+      name: selectedVehicle?.vehicleTypeId?.name || null,
+      freeServices: selectedVehicle?.vehicleTypeId?.freeServices || [],
+    },
   };
 
   res.status(200).json(formattedBooking);

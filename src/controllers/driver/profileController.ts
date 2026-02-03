@@ -98,19 +98,13 @@ export const addDriverProfile: RequestHandler = async (req, res) => {
   driver.vehicle = new mongoose.Types.ObjectId(vehicle);
   driver.licenseNumber = licenseNumber;
   driver.serviceAreas = serviceAreasArray;
-  driver.vehicleVariant = vehicleVariant
-    ? new mongoose.Types.ObjectId(vehicleVariant)
-    : null;
+  driver.vehicleVariant = new mongoose.Types.ObjectId(vehicleVariant)
   driver.registrationStep = 2;
 
   await driver.save();
 
-  // Re-populate vehicle after save
-  await driver.populate("vehicle", "key");
-
-  if (driver.vehicleVariant) {
-    await driver.populate("vehicleVariant", "maxLoadKg");
-  }
+  // Re-populate vehicle after save (this includes the variants array)
+  await driver.populate("vehicle", "key variants");
 
   // Safely get vehicle key
   const vehicleKey =
@@ -120,13 +114,27 @@ export const addDriverProfile: RequestHandler = async (req, res) => {
       ? (driver.vehicle as { key: string }).key
       : null;
 
-  // safely get vehicle variant max load
-  const vehicleVariantLoad =
+  // Find the variant within the populated vehicle's variants array
+  let vehicleVariantLoad: number | null = null;
+  if (
     driver.vehicleVariant &&
-    typeof driver.vehicleVariant === "object" &&
-    "maxLoadKg" in driver.vehicleVariant
-      ? (driver.vehicleVariant as { maxLoadKg: string }).maxLoadKg
-      : null;
+    driver.vehicle &&
+    typeof driver.vehicle === "object" &&
+    "variants" in driver.vehicle
+  ) {
+    const vehicle = driver.vehicle as { variants: Array<{ _id: mongoose.Types.ObjectId; maxLoadKg: number }> };
+    const variant = vehicle.variants.find(
+      (v) => v._id.toString() === driver.vehicleVariant?.toString()
+    );
+    vehicleVariantLoad = variant?.maxLoadKg ?? null;
+  }
+
+  if(!vehicleVariantLoad) {
+    return res.status(400).json({
+      success: false,
+      error: "Vehicle variant not found",
+    });
+  }
 
   return res.status(200).json({
     success: true,
@@ -139,6 +147,7 @@ export const addDriverProfile: RequestHandler = async (req, res) => {
         : vehicleKey,
       licenseNumber: driver.licenseNumber,
       profilePictureUrl: driver.profilePictureUrl,
+      serviceAreas: driver.serviceAreas,
     },
   });
 };

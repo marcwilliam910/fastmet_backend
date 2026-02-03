@@ -8,9 +8,11 @@ export type RequestBooking = {
   bookingType: {
     type: "asap" | "pooling" | "schedule";
     value: string;
-  };
-  selectedVehicle: Partial<Omit<SelectedVehicle, "freeServices">> & {
-    freeServices: Partial<Service>[];
+  };   selectedVehicle: {
+    _id: string;
+    key: string;
+    variant: ILoadVariant | null;
+    searchConfig: ISearchConfig;
   };
   routeData: RouteData;
   paymentMethod: "cash" | "gcash";
@@ -27,7 +29,8 @@ export type RouteData = {
   distanceFee: number;
   serviceFee: number;
   totalPrice: number;
-};
+}; 
+
 
 export type LocationDetails = {
   name: string;

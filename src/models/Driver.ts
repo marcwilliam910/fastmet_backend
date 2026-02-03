@@ -10,7 +10,7 @@ export interface IDriverRating {
 export interface IDriver extends Document {
   phoneNumber: string;
   vehicle: Types.ObjectId;
-  vehicleVariant: Types.ObjectId | null;
+  vehicleVariant: Types.ObjectId;
   firstName: string;
   lastName: string;
   rating: IDriverRating;
@@ -54,7 +54,6 @@ const driverSchema = new Schema<IDriver>(
 
     vehicleVariant: {
       type: Schema.Types.ObjectId,
-      ref: "loadVariantSchema",
     },
 
     firstName: {

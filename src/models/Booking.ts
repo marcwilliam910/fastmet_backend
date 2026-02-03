@@ -1,12 +1,7 @@
 import { Schema, Document, model } from "mongoose";
 import { LocationDetails, Service } from "../types/booking";
+import { ILoadVariant } from "./Vehicle";
 
-interface SelectedVehicle {
-  key: string;
-  name: string;
-  imageUrl: string;
-  freeServices: Service[];
-}
 
 export interface IBooking extends Document {
   customerId: Schema.Types.ObjectId;
@@ -18,7 +13,10 @@ export interface IBooking extends Document {
     type: string; // "asap" | "schedule"
     value: string | Date;
   };
-  selectedVehicle: SelectedVehicle;
+  selectedVehicle: {
+    vehicleTypeId: Schema.Types.ObjectId;
+    variantId: Schema.Types.ObjectId | null;
+  };
   routeData: {
     distance: number;
     duration: number;
@@ -98,30 +96,8 @@ const bookingSchema: Schema = new Schema<IBooking>(
       value: { type: Schema.Types.Mixed, required: true },
     },
     selectedVehicle: {
-      key: {
-        type: String,
-        required: true,
-        index: true,
-      },
-      name: {
-        type: String,
-        required: true,
-      },
-      imageUrl: {
-        type: String,
-        required: true,
-      },
-      freeServices: [
-        {
-          type: {
-            key: { type: String, required: true },
-            name: { type: String, required: true },
-            price: { type: Number, required: true },
-            quantity: { type: Number },
-            _id: false,
-          },
-        },
-      ],
+      vehicleTypeId: { type: Schema.Types.ObjectId, required: true, ref: "VehicleType" },
+      variantId: { type: Schema.Types.ObjectId },
     },
     routeData: {
       distance: { type: Number, required: true },
@@ -252,26 +228,29 @@ bookingSchema.index({ driverId: 1, status: 1 });
 // 4. Driver scheduled bookings with date filter: driverId + status + bookingType.value
 bookingSchema.index({ driverId: 1, status: 1, "bookingType.value": 1 });
 
-// 5. ASAP bookings search: status + bookingType.type + selectedVehicle.key + createdAt (desc)
+// 5. ASAP bookings search: status + bookingType.type + vehicleTypeId + variantId + createdAt (desc)
 bookingSchema.index({
   status: 1,
   "bookingType.type": 1,
-  "selectedVehicle.key": 1,
+  "selectedVehicle.vehicleTypeId": 1,
+  "selectedVehicle.variantId": 1,
   createdAt: -1,
 });
 
-// 6. Scheduled bookings search: status + bookingType.type + selectedVehicle.key + bookingType.value
+// 6. Scheduled bookings search: status + bookingType.type + vehicleTypeId + variantId + bookingType.value
 bookingSchema.index({
   status: 1,
   "bookingType.type": 1,
-  "selectedVehicle.key": 1,
+  "selectedVehicle.vehicleTypeId": 1,
+  "selectedVehicle.variantId": 1,
   "bookingType.value": 1,
 });
 
 bookingSchema.index({
   status: 1,
   "bookingType.type": 1,
-  "selectedVehicle.key": 1,
+  "selectedVehicle.vehicleTypeId": 1,
+  "selectedVehicle.variantId": 1,
   "bookingType.value": 1,
   requestedDrivers: 1,
 });

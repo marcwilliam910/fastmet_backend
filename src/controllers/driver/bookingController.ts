@@ -28,14 +28,31 @@ export const getBookings: RequestHandler = async (req, res) => {
     };
 
     const bookings = await BookingModel.find(query)
+      .populate({
+        path: "selectedVehicle.vehicleTypeId",
+        select: "name freeServices",
+      })
       .sort({ "bookingType.value": 1 })
       .skip((pageNum - 1) * limitNum)
-      .limit(limitNum);
+      .limit(limitNum)
+      .lean();
 
     const total = await BookingModel.countDocuments(query); // ✓ Same query
 
+    // Format bookings with selectedVehicle info
+    const formattedBookings = bookings.map((booking: any) => {
+      const { selectedVehicle, ...rest } = booking;
+      return {
+        ...rest,
+        selectedVehicle: {
+          name: selectedVehicle?.vehicleTypeId?.name || null,
+          freeServices: selectedVehicle?.vehicleTypeId?.freeServices || [],
+        },
+      };
+    });
+
     return res.status(200).json({
-      bookings,
+      bookings: formattedBookings,
       nextPage: pageNum * limitNum < total ? pageNum + 1 : null,
     });
   }
@@ -60,19 +77,37 @@ export const getBookings: RequestHandler = async (req, res) => {
   }
 
   const bookings = await BookingModel.find(query)
+    .populate({
+      path: "selectedVehicle.vehicleTypeId",
+      select: "name freeServices",
+    })
     .sort({ "bookingType.value": 1 })
     .skip((pageNum - 1) * limitNum)
-    .limit(limitNum);
+    .limit(limitNum)
+    .lean();
 
   console.log(bookings);
 
   const total = await BookingModel.countDocuments(query); // ✓ Same query
 
+  // Format bookings with selectedVehicle info
+  const formattedBookings = bookings.map((booking: any) => {
+    const { selectedVehicle, ...rest } = booking;
+    return {
+      ...rest,
+      selectedVehicle: {
+        name: selectedVehicle?.vehicleTypeId?.name || null,
+        freeServices: selectedVehicle?.vehicleTypeId?.freeServices || [],
+      },
+    };
+  });
+
   res.status(200).json({
-    bookings,
+    bookings: formattedBookings,
     nextPage: pageNum * limitNum < total ? pageNum + 1 : null,
   });
 };
+
 export const getAllBookingsCount: RequestHandler = async (req, res) => {
   const driverId = getUserId(req);
 

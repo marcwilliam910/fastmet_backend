@@ -61,7 +61,7 @@ export const verifyOTP: RequestHandler = async (req, res) => {
   // Simple: check if driver exists
   let driver = await DriverModel.findOne({
     phoneNumber: normalizedNumber,
-  }).populate("vehicle", "key");
+  }).populate("vehicle", "key variants");
   let status: "existing" | "pre-registered" | "new";
 
   // If not, create with phone number only (check pre-reg if needed)
@@ -94,14 +94,26 @@ export const verifyOTP: RequestHandler = async (req, res) => {
 
   // Safely get vehicle key
   const vehicleKey =
-    driver &&
     driver.vehicle &&
     typeof driver.vehicle === "object" &&
     "key" in driver.vehicle
       ? (driver.vehicle as {key: string}).key
       : null;
 
-  console.log("vehicle key: ", vehicleKey);
+  // Find the variant within the populated vehicle's variants array
+  let vehicleVariantLoad: number | null = null;
+  if (
+    driver.vehicleVariant &&
+    driver.vehicle &&
+    typeof driver.vehicle === "object" &&
+    "variants" in driver.vehicle
+  ) {
+    const vehicle = driver.vehicle as {variants: Array<{_id: mongoose.Types.ObjectId; maxLoadKg: number}>};
+    const variant = vehicle.variants.find(
+      (v) => v._id.toString() === driver.vehicleVariant?.toString()
+    );
+    vehicleVariantLoad = variant?.maxLoadKg ?? null;
+  }
 
   return res.status(200).json({
     success: true,
@@ -116,7 +128,9 @@ export const verifyOTP: RequestHandler = async (req, res) => {
       serviceAreas: driver.serviceAreas,
       firstName: driver.firstName,
       lastName: driver.lastName,
-      vehicle: vehicleKey,
+      vehicle: vehicleVariantLoad
+        ? `${vehicleKey}_${vehicleVariantLoad}`
+        : vehicleKey,
     },
   });
 };

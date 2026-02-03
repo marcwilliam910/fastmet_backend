@@ -27,6 +27,7 @@ import {startNotificationCron} from "./services/notificationCron";
 // import {seedNotifications} from "./seedNotifications";
 import {startBookingCleanupCron} from "./services/bookingCleanupCron";
 import {restoreBookingTimers} from "./utils/helpers/timerCleanup";
+import { syncBookingIndexes } from "./migrate";
 
 dotenv.config();
 
@@ -68,6 +69,7 @@ mongoose
   .then(async () => {
     console.log("MongoDB connected");
 
+    // await syncBookingIndexes();
     // migrateSearchConfig();
     // seedNotifications();
     server.listen(PORT, () => {
