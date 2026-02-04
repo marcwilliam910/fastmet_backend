@@ -35,7 +35,7 @@ export interface IDriver extends Document {
   };
   expoPushToken?: string;
   pushNotificationsEnabled: boolean;
-  serviceAreas: string[];
+  serviceAreas?: string[];
 }
 
 const driverSchema = new Schema<IDriver>(
@@ -144,16 +144,16 @@ const driverSchema = new Schema<IDriver>(
       type: [String],
       enum: [...METRO_MANILA_CITIES, "Metro Manila"], // 🆕 Include "Metro Manila" as option
       default: [],
-      required: true,
-      validate: {
-        validator: function (areas: string[]) {
-          return areas.length > 0; // At least one service area required
-        },
-        message: "At least one service area is required",
-      },
+      // required: true,
+      // validate: {
+      //   validator: function (areas: string[]) {
+      //     return areas.length > 0; // At least one service area required
+      //   },
+      //   message: "At least one service area is required",
+      // },
     },
   },
-  { timestamps: true },
+  { timestamps: true }
 );
 
 // Indexes for efficient querying
