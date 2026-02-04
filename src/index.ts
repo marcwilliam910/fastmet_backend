@@ -3,8 +3,8 @@ import cors from "cors";
 import http from "http";
 import dotenv from "dotenv";
 import mongoose from "mongoose";
-import {errorHandler} from "./middlewares/errorHandler";
-import {getIO, initSocket} from "./sockets/socket";
+import { errorHandler } from "./middlewares/errorHandler";
+import { getIO, initSocket } from "./sockets/socket";
 // client routes
 import bookingRoute from "./routes/client/bookingRoute";
 import profileClientRoute from "./routes/client/profileRoute";
@@ -21,13 +21,10 @@ import notificationDriverRoutes from "./routes/driver/notificationRoute";
 // for all
 import vehicleRoute from "./routes/vehicleRoute";
 
-import {authenticateJWT} from "./middlewares/verifyToken";
-import {startNotificationCron} from "./services/notificationCron";
-// import {migrateSearchConfig} from "./migrate";
-// import {seedNotifications} from "./seedNotifications";
-import {startBookingCleanupCron} from "./services/bookingCleanupCron";
-import {restoreBookingTimers} from "./utils/helpers/timerCleanup";
-import { syncBookingIndexes } from "./migrate";
+import { authenticateJWT } from "./middlewares/verifyToken";
+import { startNotificationCron } from "./services/notificationCron";
+import { startBookingCleanupCron } from "./services/bookingCleanupCron";
+import { restoreBookingTimers } from "./utils/helpers/timerCleanup";
 
 dotenv.config();
 
@@ -39,10 +36,10 @@ app.use(
     origin: "*",
     methods: ["GET", "POST", "PUT", "DELETE"],
     credentials: true,
-  }),
+  })
 );
 app.use(express.json());
-app.use(express.urlencoded({extended: true}));
+app.use(express.urlencoded({ extended: true }));
 
 app.use("/api/client/auth", authClientRoute);
 app.use("/api/client/profile", authenticateJWT, profileClientRoute);
@@ -69,17 +66,12 @@ mongoose
   .then(async () => {
     console.log("MongoDB connected");
 
-    // await syncBookingIndexes();
-    // migrateSearchConfig();
-    // seedNotifications();
     server.listen(PORT, () => {
       console.log(`Server running at http://localhost:${PORT}`);
 
       // ✅ Start cron AFTER MongoDB is connected and server is listening
-      // startNotificationCron();
-      // console.log("⏰ Notification cron job initialized");
-
-      // startTestNotificationCron();
+      startNotificationCron();
+      console.log("⏰ Notification cron job initialized");
 
       const io = getIO();
       startBookingCleanupCron(io);
