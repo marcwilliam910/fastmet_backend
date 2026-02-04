@@ -1,14 +1,46 @@
 import { RequestHandler } from "express";
 import DriverModel from "../../models/Driver";
-import cloudinary from "../../config/cloudinary";
 import Driver from "../../models/Driver";
 import { getUserId } from "../../utils/helpers/getUserId";
 import mongoose from "mongoose";
 import {
   getSecureFolderId,
+  deleteImageFromCloudinary,
   uploadImageToCloudinary,
   uploadMultipleImagesWithPublicIds,
 } from "../../services/cloudinaryService";
+
+export const isBlank = (v?: string | null) => !v || v.trim() === "";
+
+const parseAndValidateServiceAreas = (
+  serviceAreas: unknown
+):
+  | { ok: true; value: string[] }
+  | { ok: false; error: "invalid_format" | "invalid_value" } => {
+  let parsedAreas: unknown = serviceAreas;
+
+  if (typeof serviceAreas === "string") {
+    const trimmed = serviceAreas.trim();
+    if (isBlank(trimmed)) {
+      return { ok: false, error: "invalid_value" };
+    }
+    try {
+      parsedAreas = JSON.parse(trimmed);
+    } catch {
+      return { ok: false, error: "invalid_format" };
+    }
+  }
+
+  if (
+    !Array.isArray(parsedAreas) ||
+    parsedAreas.length === 0 ||
+    !parsedAreas.every((area) => typeof area === "string" && !isBlank(area))
+  ) {
+    return { ok: false, error: "invalid_value" };
+  }
+
+  return { ok: true, value: parsedAreas.map((a) => a.trim()) };
+};
 
 export const addDriverProfile: RequestHandler = async (req, res) => {
   const driverId = getUserId(req);
@@ -38,17 +70,44 @@ export const addDriverProfile: RequestHandler = async (req, res) => {
     });
   }
 
+  const firstNameTrimmed =
+    typeof firstName === "string" ? firstName.trim() : "";
+  const lastNameTrimmed = typeof lastName === "string" ? lastName.trim() : "";
+  const vehicleTrimmed = typeof vehicle === "string" ? vehicle.trim() : "";
+  const licenseNumberTrimmed =
+    typeof licenseNumber === "string" ? licenseNumber.trim() : "";
+  const serviceAreasTrimmed =
+    typeof serviceAreas === "string" ? serviceAreas.trim() : "";
+  const vehicleVariantTrimmed =
+    typeof vehicleVariant === "string" ? vehicleVariant.trim() : "";
+
   const file = req.file;
-  const serviceAreasArray = JSON.parse(serviceAreas);
+  if (isBlank(serviceAreasTrimmed)) {
+    return res.status(400).json({
+      success: false,
+      error: "All fields are required",
+    });
+  }
+
+  let serviceAreasArray: unknown;
+  try {
+    serviceAreasArray = JSON.parse(serviceAreasTrimmed);
+  } catch {
+    return res.status(400).json({
+      success: false,
+      error: "Invalid service areas format",
+    });
+  }
 
   if (
-    !firstName ||
-    !lastName ||
-    !vehicle ||
-    !licenseNumber ||
+    isBlank(firstNameTrimmed) ||
+    isBlank(lastNameTrimmed) ||
+    isBlank(vehicleTrimmed) ||
+    isBlank(licenseNumberTrimmed) ||
     !file ||
-    !serviceAreas ||
-    serviceAreasArray.length === 0
+    !Array.isArray(serviceAreasArray) ||
+    serviceAreasArray.length === 0 ||
+    isBlank(vehicleVariantTrimmed)
   ) {
     return res.status(400).json({
       success: false,
@@ -76,10 +135,31 @@ export const addDriverProfile: RequestHandler = async (req, res) => {
     });
   }
 
+  // Validate PH license number format
+  if (licenseNumberTrimmed) {
+    if (/\s/.test(licenseNumberTrimmed)) {
+      return res.status(400).json({
+        success: false,
+        error: "License number must not contain whitespaces",
+      });
+    }
+    const phLicenseRegex = /^[A-Z]{1,3}\d{2}-\d{2}-\d{5,6}$/;
+    if (!phLicenseRegex.test(licenseNumberTrimmed)) {
+      return res.status(400).json({
+        success: false,
+        error:
+          "License number must be in valid Philippine driver's license format (e.g., D12-34-567890)",
+      });
+    }
+  }
+
   // Check if license number is already taken
-  if (licenseNumber && licenseNumber !== driver.licenseNumber) {
+  if (
+    licenseNumberTrimmed &&
+    licenseNumberTrimmed !== (driver.licenseNumber ?? "")
+  ) {
     const existingLicense = await DriverModel.findOne({
-      licenseNumber,
+      licenseNumber: licenseNumberTrimmed,
       _id: { $ne: driverId },
     });
 
@@ -93,12 +173,12 @@ export const addDriverProfile: RequestHandler = async (req, res) => {
 
   // Update driver data
   if (profilePictureUrl) driver.profilePictureUrl = profilePictureUrl;
-  driver.firstName = firstName;
-  driver.lastName = lastName;
-  driver.vehicle = new mongoose.Types.ObjectId(vehicle);
-  driver.licenseNumber = licenseNumber;
-  driver.serviceAreas = serviceAreasArray;
-  driver.vehicleVariant = new mongoose.Types.ObjectId(vehicleVariant)
+  driver.firstName = firstNameTrimmed;
+  driver.lastName = lastNameTrimmed;
+  driver.vehicle = new mongoose.Types.ObjectId(vehicleTrimmed);
+  driver.licenseNumber = licenseNumberTrimmed;
+  driver.serviceAreas = serviceAreasArray as any;
+  driver.vehicleVariant = new mongoose.Types.ObjectId(vehicleVariantTrimmed);
   driver.registrationStep = 2;
 
   await driver.save();
@@ -122,14 +202,16 @@ export const addDriverProfile: RequestHandler = async (req, res) => {
     typeof driver.vehicle === "object" &&
     "variants" in driver.vehicle
   ) {
-    const vehicle = driver.vehicle as { variants: Array<{ _id: mongoose.Types.ObjectId; maxLoadKg: number }> };
+    const vehicle = driver.vehicle as {
+      variants: Array<{ _id: mongoose.Types.ObjectId; maxLoadKg: number }>;
+    };
     const variant = vehicle.variants.find(
       (v) => v._id.toString() === driver.vehicleVariant?.toString()
     );
     vehicleVariantLoad = variant?.maxLoadKg ?? null;
   }
 
-  if(!vehicleVariantLoad) {
+  if (!vehicleVariantLoad) {
     return res.status(400).json({
       success: false,
       error: "Vehicle variant not found",
@@ -175,7 +257,7 @@ export const uploadMultipleDriverImages: RequestHandler = async (req, res) => {
       files,
       `fastmet/drivers/${getSecureFolderId(driverId)}/profile_images`,
       imageTypes,
-      "profile", // Uses profile config: 500px, 85% quality
+      "profile" // Uses profile config: 500px, 85% quality
     );
 
     // Convert array to object
@@ -194,7 +276,7 @@ export const uploadMultipleDriverImages: RequestHandler = async (req, res) => {
     await Driver.findByIdAndUpdate(
       driverId,
       { ...updateObject, registrationStep: step },
-      { new: true },
+      { new: true }
     );
 
     return res.json({
@@ -243,23 +325,115 @@ export const updateServiceAreas: RequestHandler = async (req, res) => {
 
   const { serviceAreas } = req.body;
 
-  if (
-    !Array.isArray(serviceAreas) ||
-    serviceAreas.length === 0 ||
-    !serviceAreas.every((area) => typeof area === "string" && !!area.trim())
-  ) {
-    // Ensure serviceAreas is a non-empty array of non-empty strings
+  const parsed = parseAndValidateServiceAreas(serviceAreas);
+  if (!parsed.ok) {
     return res.status(400).json({
-      message: "Service areas must be a non-empty array of strings",
+      message:
+        parsed.error === "invalid_format"
+          ? "Invalid service areas format"
+          : "Service areas must be a non-empty array of strings",
     });
   }
 
-  driver.serviceAreas = serviceAreas;
+  driver.serviceAreas = parsed.value;
 
   await driver.save();
 
   return res.json({
     success: true,
     serviceAreas: driver.serviceAreas,
+  });
+};
+
+export const updateDriverProfile: RequestHandler = async (req, res) => {
+  const driverId = getUserId(req);
+  const { serviceAreas, deleteProfilePicture } = req.body as {
+    serviceAreas?: unknown;
+    deleteProfilePicture?: unknown;
+  };
+  const file = req.file;
+
+  if (!driverId) {
+    return res.status(400).json({
+      success: false,
+      error: "Driver ID is required",
+    });
+  }
+
+  const driver = await DriverModel.findById(driverId);
+  if (!driver) {
+    return res.status(404).json({
+      success: false,
+      error: "Driver not found",
+    });
+  }
+
+  const updateData: Record<string, any> = {};
+
+  // Handle serviceAreas update (supports array or JSON string)
+  if (serviceAreas !== undefined) {
+    const parsed = parseAndValidateServiceAreas(serviceAreas);
+    if (!parsed.ok) {
+      return res.status(400).json({
+        success: false,
+        error:
+          parsed.error === "invalid_format"
+            ? "Invalid service areas format"
+            : "Service areas must be a non-empty array of strings",
+      });
+    }
+
+    updateData.serviceAreas = parsed.value;
+  }
+
+  // Handle profile picture deletion
+  const shouldDelete =
+    deleteProfilePicture === "true" || deleteProfilePicture === true;
+  if (shouldDelete) {
+    if (driver.profilePictureUrl) {
+      const publicId = `fastmet/drivers/${getSecureFolderId(
+        driverId
+      )}/profile_images/profile`;
+      await deleteImageFromCloudinary(publicId);
+    }
+    updateData.profilePictureUrl = "";
+  }
+
+  // Handle new profile picture upload (Cloudinary overwrites same publicId)
+  if (file) {
+    updateData.profilePictureUrl = await uploadImageToCloudinary(file.buffer, {
+      folder: `fastmet/drivers/${getSecureFolderId(driverId)}/profile_images`,
+      publicId: "profile",
+    });
+  }
+
+  if (Object.keys(updateData).length === 0) {
+    return res.status(400).json({
+      success: false,
+      error: "No fields to update",
+    });
+  }
+
+  const updatedDriver = await DriverModel.findByIdAndUpdate(
+    driverId,
+    updateData,
+    { new: true }
+  );
+
+  if (!updatedDriver) {
+    return res.status(404).json({
+      success: false,
+      error: "Driver not found",
+    });
+  }
+
+  return res.status(200).json({
+    success: true,
+    message: "Profile updated",
+    driver: {
+      id: updatedDriver._id,
+      serviceAreas: updatedDriver.serviceAreas,
+      profilePictureUrl: updatedDriver.profilePictureUrl,
+    },
   });
 };

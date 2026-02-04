@@ -113,6 +113,20 @@ const driverSchema = new Schema<IDriver>(
       unique: true,
       sparse: true,
       trim: true,
+      validate: {
+        validator: function (v: string | null) {
+          // Allow null or empty (not required)
+          if (v === null || v === undefined || v === "") return true;
+          // PH License number pattern (eg: N12-34-567890, B12-34-567890, D12-12-123456, A12-34-567890, etc)
+          // Accepts formats like: LLL-NN-NNNNNN or LL-NN-NNNNNN (L=Letter, N=Number), dashes optional
+          // More generally: 1 to 3 uppercase letters, dash, 2 digits, dash, 6 digits (but sometimes 5 digits allowed)
+          // Common: A##-##-###### or A##-##-##### or AA##-##-###### etc
+          const phLicenseRegex = /^[A-Z]{1,3}\d{2}-\d{2}-\d{5,6}$/;
+          return phLicenseRegex.test(v);
+        },
+        message:
+          "License number must be in valid Philippine driver's license format (e.g., D12-34-567890)",
+      },
     },
 
     images: {

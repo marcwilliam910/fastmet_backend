@@ -47,17 +47,24 @@ export const requestAsapBooking = (socket: CustomSocket, io: Server) => {
     const booking = await BookingModel.create({
       ...data,
       selectedVehicle: {
-        vehicleTypeId: new mongoose.Types.ObjectId(String(data.selectedVehicle._id)),
-        variantId: data.selectedVehicle.variant ? new mongoose.Types.ObjectId(String(data.selectedVehicle.variant._id)) : null,
+        vehicleTypeId: new mongoose.Types.ObjectId(
+          String(data.selectedVehicle._id)
+        ),
+        variantId: data.selectedVehicle.variant
+          ? new mongoose.Types.ObjectId(
+              String(data.selectedVehicle.variant._id)
+            )
+          : null,
       },
       status: "searching",
       searchStep: 1,
       currentRadiusKm: initialRadiusKm,
     });
 
-    const vehicleType = data.selectedVehicle.variant ? `${data.selectedVehicle.key}_${data.selectedVehicle.variant.maxLoadKg}` : data.selectedVehicle.key;
+    const vehicleType = data.selectedVehicle.variant
+      ? `${data.selectedVehicle.key}_${data.selectedVehicle.variant.maxLoadKg}`
+      : data.selectedVehicle.key;
     console.log("VEHICLE TYPE: ", vehicleType);
-
 
     const client = await UserModel.findById(booking.customerId)
       .select("fullName profilePictureUrl phoneNumber email")
@@ -79,56 +86,53 @@ export const requestAsapBooking = (socket: CustomSocket, io: Server) => {
     /* ------------------------------------------------------------------ */
     /* 2. START 10-MINUTE ABSOLUTE TIMEOUT                                 */
     /* ------------------------------------------------------------------ */
-    const timeoutTimer = setTimeout(
-      async () => {
-        console.log(`⏰ Booking ${booking._id} reached 10-minute timeout`);
+    const timeoutTimer = setTimeout(async () => {
+      console.log(`⏰ Booking ${booking._id} reached 10-minute timeout`);
 
-        const freshBooking = await BookingModel.findById(booking._id).lean();
+      const freshBooking = await BookingModel.findById(booking._id).lean();
 
-        if (freshBooking && freshBooking.status === "searching") {
-          // Delete the booking
-          await BookingModel.findByIdAndDelete(booking._id);
+      if (freshBooking && freshBooking.status === "searching") {
+        // Delete the booking
+        await BookingModel.findByIdAndDelete(booking._id);
 
-          // Create notification for client
-          await NotificationModel.create({
-            userId: freshBooking.customerId,
-            userType: "Client",
-            title: "Booking Expired",
-            message:
-              "10 minutes has passed but no drivers were available for your delivery request.",
-            type: "booking_expired",
-            data: {
-              bookingId: freshBooking._id,
-              pickUp: freshBooking.pickUp,
-              dropOff: freshBooking.dropOff,
-            },
-          });
+        // Create notification for client
+        await NotificationModel.create({
+          userId: freshBooking.customerId,
+          userType: "Client",
+          title: "Booking Expired",
+          message:
+            "10 minutes has passed but no drivers were available for your delivery request.",
+          type: "booking_expired",
+          data: {
+            bookingId: freshBooking._id,
+            pickUp: freshBooking.pickUp,
+            dropOff: freshBooking.dropOff,
+          },
+        });
 
-          // Notify the customer
-          socket.emit("bookingExpired", {
-            message: "Your booking request has expired",
-          });
+        // Notify the customer
+        socket.emit("bookingExpired", {
+          message: "Your booking request has expired",
+        });
 
-          // Notify all drivers in the temporary room
-          const temporaryRoom = `BOOKING_${booking._id}`;
-          io.to(temporaryRoom).emit("bookingExpired", {
-            bookingId: booking._id,
-          });
+        // Notify all drivers in the temporary room
+        const temporaryRoom = `BOOKING_${booking._id}`;
+        io.to(temporaryRoom).emit("bookingExpired", {
+          bookingId: booking._id,
+        });
 
-          // Cleanup room
-          // const socketsInRoom = await io.in(temporaryRoom).fetchSockets();
-          // socketsInRoom.forEach((s) => s.leave(temporaryRoom));
+        // Cleanup room
+        // const socketsInRoom = await io.in(temporaryRoom).fetchSockets();
+        // socketsInRoom.forEach((s) => s.leave(temporaryRoom));
 
-          console.log(
-            `🗑️  Deleted booking ${booking._id} after 10 minutes timeout`,
-          );
-        }
+        console.log(
+          `🗑️  Deleted booking ${booking._id} after 10 minutes timeout`
+        );
+      }
 
-        // Clean up timer
-        bookingTimers.delete(String(booking._id));
-      },
-      10 * 60 * 1000,
-    ); // 10 minutes
+      // Clean up timer
+      bookingTimers.delete(String(booking._id));
+    }, 10 * 60 * 1000); // 10 minutes
 
     // Store the timer
     bookingTimers.set(String(booking._id), timeoutTimer);
@@ -152,24 +156,21 @@ export const requestAsapBooking = (socket: CustomSocket, io: Server) => {
     const runSearchStep = async () => {
       // Populate and type-check vehicleTypeId to assure type safety for freeServices
       const freshBooking = await BookingModel.findById(booking._id)
-        .populate<{ 
-          selectedVehicle: { 
-            vehicleTypeId: { name: string; freeServices: Partial<Service>[] } 
-          } 
+        .populate<{
+          selectedVehicle: {
+            vehicleTypeId: { name: string; freeServices: Partial<Service>[] };
+          };
         }>("selectedVehicle.vehicleTypeId", "name freeServices")
         .lean();
 
-      if (
-        !freshBooking ||
-        freshBooking.status !== "searching"
-      ) {
+      if (!freshBooking || freshBooking.status !== "searching") {
         return;
       }
 
       const radiusKm = freshBooking.currentRadiusKm;
 
       console.log(
-        `🔍 Search step ${freshBooking.searchStep} | radius ${radiusKm}km`,
+        `🔍 Search step ${freshBooking.searchStep} | radius ${radiusKm}km`
       );
 
       socket.emit("radiusExpansion", {
@@ -207,19 +208,17 @@ export const requestAsapBooking = (socket: CustomSocket, io: Server) => {
           };
         })
         .filter(Boolean) as {
-          socket: any;
-          driverId: string;
-          distanceKm: number;
-        }[];
+        socket: any;
+        driverId: string;
+        distanceKm: number;
+      }[];
 
       if (newDrivers.length > 0) {
         newDrivers.map((d) => driverList.add(d.driverId));
 
-
         newDrivers.forEach(({ socket, distanceKm }) => {
           socket.join(temporaryRoom);
           console.log("Distance: ", distanceKm);
-          console.log("SOcket: ", socket);
 
           socket.emit("new_booking_request", {
             _id: freshBooking._id,
@@ -235,7 +234,8 @@ export const requestAsapBooking = (socket: CustomSocket, io: Server) => {
             bookingType: freshBooking.bookingType,
             routeData: freshBooking.routeData,
             selectedVehicle: {
-              freeServices: freshBooking.selectedVehicle.vehicleTypeId?.freeServices || [],
+              freeServices:
+                freshBooking.selectedVehicle.vehicleTypeId?.freeServices || [],
             },
             addedServices: freshBooking.addedServices,
             paymentMethod: freshBooking.paymentMethod,
@@ -247,7 +247,7 @@ export const requestAsapBooking = (socket: CustomSocket, io: Server) => {
         });
 
         console.log(
-          `📤 Sent to ${newDrivers.length} drivers (radius ${radiusKm}km)`,
+          `📤 Sent to ${newDrivers.length} drivers (radius ${radiusKm}km)`
         );
       }
 
@@ -255,7 +255,7 @@ export const requestAsapBooking = (socket: CustomSocket, io: Server) => {
 
       if (nextRadius > maxRadiusKm) {
         console.log(
-          `🛑 Max radius reached for booking ${freshBooking.bookingRef}`,
+          `🛑 Max radius reached for booking ${freshBooking.bookingRef}`
         );
         return;
       }
@@ -298,8 +298,14 @@ export const requestScheduleBooking = (socket: CustomSocket, io: Server) => {
     const booking = await BookingModel.create({
       ...data,
       selectedVehicle: {
-        vehicleTypeId: new mongoose.Types.ObjectId(String(data.selectedVehicle._id)),
-        variantId: data.selectedVehicle.variant ? new mongoose.Types.ObjectId(String(data.selectedVehicle.variant._id)) : null,
+        vehicleTypeId: new mongoose.Types.ObjectId(
+          String(data.selectedVehicle._id)
+        ),
+        variantId: data.selectedVehicle.variant
+          ? new mongoose.Types.ObjectId(
+              String(data.selectedVehicle.variant._id)
+            )
+          : null,
       },
       status: "pending",
     });
@@ -350,7 +356,9 @@ export const requestScheduleBooking = (socket: CustomSocket, io: Server) => {
     };
 
     // 4. Determine vehicle type
-    const vehicleType = data.selectedVehicle.variant ? `${data.selectedVehicle.key}_${data.selectedVehicle.variant.maxLoadKg}` : data.selectedVehicle.key;
+    const vehicleType = data.selectedVehicle.variant
+      ? `${data.selectedVehicle.key}_${data.selectedVehicle.variant.maxLoadKg}`
+      : data.selectedVehicle.key;
     console.log("VEHICLE TYPE: ", vehicleType);
 
     if (!vehicleType) {
@@ -366,7 +374,7 @@ export const requestScheduleBooking = (socket: CustomSocket, io: Server) => {
     if (!pickupCity) {
       console.log(
         "⚠️ Could not extract city from address:",
-        booking.pickUp.address,
+        booking.pickUp.address
       );
       socket.emit("booking_request_failed", {
         message:
@@ -387,7 +395,7 @@ export const requestScheduleBooking = (socket: CustomSocket, io: Server) => {
       .fetchSockets();
 
     console.log(
-      `🔍 Found ${availableDriverSockets.length} available ${vehicleType} drivers`,
+      `🔍 Found ${availableDriverSockets.length} available ${vehicleType} drivers`
     );
 
     // 7. OPTIMIZED: Batch query all driver IDs at once
@@ -405,17 +413,17 @@ export const requestScheduleBooking = (socket: CustomSocket, io: Server) => {
       .lean();
 
     console.log(
-      `✅ Found ${drivers.length} drivers servicing ${pickupCity} from database`,
+      `✅ Found ${drivers.length} drivers servicing ${pickupCity} from database`
     );
 
     // Create a Set of eligible driver IDs for fast lookup
     const eligibleDriverIds = new Set(
-      drivers.map((driver) => driver._id.toString()),
+      drivers.map((driver) => driver._id.toString())
     );
 
     // Filter sockets based on database results
     const eligibleDrivers = availableDriverSockets.filter((driverSocket) =>
-      eligibleDriverIds.has(driverSocket.data.userId),
+      eligibleDriverIds.has(driverSocket.data.userId)
     );
 
     if (eligibleDrivers.length === 0) {
@@ -426,7 +434,7 @@ export const requestScheduleBooking = (socket: CustomSocket, io: Server) => {
     }
 
     console.log(
-      `🚗 ${eligibleDrivers.length} ${vehicleType} drivers will receive this booking in ${pickupCity}`,
+      `🚗 ${eligibleDrivers.length} ${vehicleType} drivers will receive this booking in ${pickupCity}`
     );
 
     // 8. Join eligible drivers to booking room
@@ -440,7 +448,7 @@ export const requestScheduleBooking = (socket: CustomSocket, io: Server) => {
     io.to(temporaryRoom).emit("new_booking_request", driverPayload);
 
     console.log(
-      `📤 Scheduled booking ${booking._id} sent to ${eligibleDrivers.length} drivers in ${pickupCity}`,
+      `📤 Scheduled booking ${booking._id} sent to ${eligibleDrivers.length} drivers in ${pickupCity}`
     );
   });
 };
@@ -465,7 +473,7 @@ export const getDriverLocation = (socket: CustomSocket, io: Server) => {
         bookingId,
         clientUserId,
       });
-    },
+    }
   );
 };
 
@@ -490,7 +498,7 @@ export const pickDriver = (socket: CustomSocket, io: Server) => {
       }
 
       console.log(
-        `🚗 Customer attempting to pick driver ${driverId} for booking ${bookingId}`,
+        `🚗 Customer attempting to pick driver ${driverId} for booking ${bookingId}`
       );
 
       // Check if the booking exists and is pending (using lean for read-only check)
@@ -509,7 +517,7 @@ export const pickDriver = (socket: CustomSocket, io: Server) => {
 
       // Check if driver was actually in the requested drivers list
       const wasRequested = existingBooking.requestedDrivers.some(
-        (id) => id.toString() === driverId.toString(),
+        (id) => id.toString() === driverId.toString()
       );
 
       if (!wasRequested) {
@@ -533,7 +541,7 @@ export const pickDriver = (socket: CustomSocket, io: Server) => {
           status: payload.type === "asap" ? "active" : "scheduled",
           acceptedAt: new Date(),
         },
-        { new: true },
+        { new: true }
       );
 
       if (!booking) {
@@ -585,7 +593,9 @@ export const pickDriver = (socket: CustomSocket, io: Server) => {
 
           // Create notification + push for scheduled booking only
           if (payload.type === "schedule") {
-            const notifMessage = `You have been selected for a scheduled delivery from ${booking.pickUp?.address || "pickup"} to ${booking.dropOff?.address || "destination"}`;
+            const notifMessage = `You have been selected for a scheduled delivery from ${
+              booking.pickUp?.address || "pickup"
+            } to ${booking.dropOff?.address || "destination"}`;
 
             await NotificationModel.create({
               userId: driverId,
@@ -607,7 +617,7 @@ export const pickDriver = (socket: CustomSocket, io: Server) => {
               driverId,
               "Scheduled Booking Confirmed",
               notifMessage,
-              { bookingId: booking._id, type: "new_scheduled_ride" },
+              { bookingId: booking._id, type: "new_scheduled_ride" }
             );
 
             console.log(`📩 Notification created for driver ${driverId}`);
@@ -618,7 +628,9 @@ export const pickDriver = (socket: CustomSocket, io: Server) => {
 
           // Create notification + push for rejected drivers (scheduled booking only)
           if (payload.type === "schedule") {
-            const rejectedMessage = `Another driver was selected for the ${booking.pickUp?.address || "pickup"} to ${booking.dropOff?.address || "destination"} booking.`;
+            const rejectedMessage = `Another driver was selected for the ${
+              booking.pickUp?.address || "pickup"
+            } to ${booking.dropOff?.address || "destination"} booking.`;
 
             await NotificationModel.create({
               userId: requestedDriverIdStr,
@@ -636,11 +648,11 @@ export const pickDriver = (socket: CustomSocket, io: Server) => {
               requestedDriverIdStr,
               "Booking Taken",
               rejectedMessage,
-              { bookingId: booking._id, type: "booking_taken" },
+              { bookingId: booking._id, type: "booking_taken" }
             );
 
             console.log(
-              `📩 Notification created for rejected driver ${requestedDriverIdStr}`,
+              `📩 Notification created for rejected driver ${requestedDriverIdStr}`
             );
           }
         }
@@ -657,10 +669,10 @@ export const pickDriver = (socket: CustomSocket, io: Server) => {
       socketsInRoom.forEach((s) => s.leave(temporaryRoom));
 
       console.log(
-        `🧹 Cleared ${socketsInRoom.length} sockets from ${temporaryRoom}`,
+        `🧹 Cleared ${socketsInRoom.length} sockets from ${temporaryRoom}`
       );
       console.log(`✅ Booking ${bookingId} assigned to driver ${driverId}`);
-    },
+    }
   );
 };
 
@@ -686,7 +698,7 @@ export const cancelBooking = (socket: CustomSocket, io: Server) => {
         status: "cancelled",
         cancelledAt: new Date(),
       },
-      { new: true },
+      { new: true }
     );
 
     if (!booking) {
@@ -722,7 +734,7 @@ export const cancelBooking = (socket: CustomSocket, io: Server) => {
     socketsInRoom.forEach((s) => s.leave(temporaryRoom));
 
     console.log(
-      `🧹 Cleared ${socketsInRoom.length} sockets from ${temporaryRoom}`,
+      `🧹 Cleared ${socketsInRoom.length} sockets from ${temporaryRoom}`
     );
     console.log(`✅ Booking ${bookingId} cancelled`);
   });

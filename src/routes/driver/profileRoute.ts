@@ -4,6 +4,7 @@ import {
   addDriverProfile,
   uploadMultipleDriverImages,
   updateServiceAreas,
+  updateDriverProfile,
 } from "../../controllers/driver/profileController";
 import { upload } from "../../utils/mutler";
 
@@ -14,9 +15,13 @@ router.post("/", upload.single("profilePicture"), addDriverProfile);
 router.post(
   "/documents-upload",
   upload.array("images"),
-  uploadMultipleDriverImages,
-  uploadMultipleDriverImages,
+  uploadMultipleDriverImages
 );
 router.patch("/update-service-areas", updateServiceAreas);
+router.patch(
+  "/update-profile",
+  upload.single("profilePicture"),
+  updateDriverProfile
+);
 
 export default router;
