@@ -19,7 +19,7 @@ export function chatHandler(socket: CustomSocket, io: Server) {
     socket.join(conversationId);
 
     console.log(
-      `${socket.userType} ${socket.userId} joined room: ${conversationId}`,
+      `${socket.data.userType} ${socket.data.userId} joined room: ${conversationId}`
     );
 
     await ConversationModel.findByIdAndUpdate(
@@ -29,7 +29,7 @@ export function chatHandler(socket: CustomSocket, io: Server) {
         client: clientId,
         driver: driverId,
       },
-      { upsert: true, new: true },
+      { upsert: true, new: true }
     );
 
     socket.emit("room_joined", {
@@ -65,12 +65,12 @@ export function chatHandler(socket: CustomSocket, io: Server) {
       profilePictureUrl,
     } = payload;
 
-    if (socket.userId !== senderId) {
+    if (socket.data.userId !== senderId) {
       socket.emit("message_error", { error: "Unauthorized" });
       return;
     }
 
-    const senderType = socket.userType;
+    const senderType = socket.data.userType;
     let imageUrl = null;
 
     // Upload image to Cloudinary if provided
@@ -79,7 +79,7 @@ export function chatHandler(socket: CustomSocket, io: Server) {
         imageUrl = await uploadBase64ImageToCloudinary(
           image,
           `fastmet/chats/${getSecureFolderId(senderId)}`,
-          "default", // Uses default config: 1200px, 80% quality
+          "default" // Uses default config: 1200px, 80% quality
         );
       } catch (error) {
         console.error("Image upload failed:", error);
@@ -141,17 +141,19 @@ export function chatHandler(socket: CustomSocket, io: Server) {
     });
 
     console.log(
-      `Message sent to conversation ${conversationId} and user ${receiverId}`,
+      `Message sent to conversation ${conversationId} and user ${receiverId}`
     );
   });
 
   // start up app
   on("get_unread_conversations_count", async () => {
     const userIdField =
-      socket.userType === "client" ? socket.userId : socket.userId;
+      socket.data.userType === "client"
+        ? socket.data.userId
+        : socket.data.userId;
     const unreadConversationsCount = await ConversationModel.countDocuments({
-      [socket.userType]: userIdField,
-      [`unreadCount.${socket.userType}`]: { $gt: 0 },
+      [socket.data.userType]: userIdField,
+      [`unreadCount.${socket.data.userType}`]: { $gt: 0 },
     });
 
     socket.emit("unread_conversations_count", { unreadConversationsCount });
@@ -161,7 +163,7 @@ export function chatHandler(socket: CustomSocket, io: Server) {
   on("leave_room", async ({ conversationId }) => {
     socket.leave(conversationId);
     const updateField =
-      socket.userType === "client"
+      socket.data.userType === "client"
         ? "unreadCount.client"
         : "unreadCount.driver";
 
@@ -170,19 +172,19 @@ export function chatHandler(socket: CustomSocket, io: Server) {
       {
         [updateField]: 0, // Reset unread count for the joining user
       },
-      { new: true },
+      { new: true }
     );
 
     // Get updated count after resetting
     const unreadConversationsCount = await ConversationModel.countDocuments({
-      [socket.userType]: socket.userId,
-      [`unreadCount.${socket.userType}`]: { $gt: 0 },
+      [socket.data.userType]: socket.data.userId,
+      [`unreadCount.${socket.data.userType}`]: { $gt: 0 },
     });
 
     // Emit to user's personal room to update badge
-    io.to(socket.userId).emit("unread_conversations_updated", {
+    io.to(socket.data.userId).emit("unread_conversations_updated", {
       unreadConversationsCount,
     });
-    console.log(`${socket.userType} left room: ${conversationId}`);
+    console.log(`${socket.data.userType} left room: ${conversationId}`);
   });
 }

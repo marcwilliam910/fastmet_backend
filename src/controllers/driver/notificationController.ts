@@ -1,21 +1,21 @@
-import {Request, Response} from "express";
-import {Expo} from "expo-server-sdk";
+import { Request, Response } from "express";
+import { Expo } from "expo-server-sdk";
 import DriverModel from "../../models/Driver";
 import NotificationModel from "../../models/Notification";
-import {getUserId} from "../../utils/helpers/getUserId";
+import { getUserId } from "../../utils/helpers/getUserId";
 
 const expo = new Expo();
 
 export const savePushToken = async (req: Request, res: Response) => {
-  const {expoPushToken} = req.body;
+  const { expoPushToken } = req.body;
   const driverId = getUserId(req);
 
   if (!driverId) {
-    return res.status(401).json({error: "Unauthorized"});
+    return res.status(401).json({ error: "Unauthorized" });
   }
 
   if (!expoPushToken) {
-    return res.status(400).json({error: "Push token is required"});
+    return res.status(400).json({ error: "Push token is required" });
   }
 
   if (!Expo.isExpoPushToken(expoPushToken)) {
@@ -32,7 +32,7 @@ export const savePushToken = async (req: Request, res: Response) => {
       pushNotificationsEnabled: true,
       updatedAt: new Date(),
     },
-    {new: true},
+    { new: true }
   );
 
   console.log(`✅ Saved push token for driver ${driverId}`);
@@ -47,7 +47,7 @@ export const enableNotifications = async (req: Request, res: Response) => {
   const driverId = getUserId(req);
 
   if (!driverId) {
-    return res.status(401).json({error: "Unauthorized"});
+    return res.status(401).json({ error: "Unauthorized" });
   }
 
   await DriverModel.findByIdAndUpdate(driverId, {
@@ -64,7 +64,7 @@ export const disableNotifications = async (req: Request, res: Response) => {
   const driverId = getUserId(req);
 
   if (!driverId) {
-    return res.status(401).json({error: "Unauthorized"});
+    return res.status(401).json({ error: "Unauthorized" });
   }
 
   await DriverModel.findByIdAndUpdate(driverId, {
@@ -81,15 +81,15 @@ export const getNotificationSettings = async (req: Request, res: Response) => {
   const driverId = getUserId(req);
 
   if (!driverId) {
-    return res.status(401).json({error: "Unauthorized"});
+    return res.status(401).json({ error: "Unauthorized" });
   }
 
   const driver = await DriverModel.findById(driverId).select(
-    "expoPushToken pushNotificationsEnabled",
+    "expoPushToken pushNotificationsEnabled"
   );
 
   if (!driver) {
-    return res.status(404).json({error: "Driver not found"});
+    return res.status(404).json({ error: "Driver not found" });
   }
 
   res.json({
@@ -102,28 +102,30 @@ export const getNotificationSettings = async (req: Request, res: Response) => {
 };
 
 export const testPushNotification = async (req: Request, res: Response) => {
-  const driverId = getUserId(req);
+  const driverId = req.query.driverId;
 
   if (!driverId) {
-    return res.status(401).json({error: "Unauthorized"});
+    return res.status(401).json({ error: "Unauthorized" });
   }
 
   const driver = await DriverModel.findById(driverId);
 
   if (!driver?.expoPushToken) {
-    return res.status(400).json({error: "No push token found for this driver"});
+    return res
+      .status(400)
+      .json({ error: "No push token found for this driver" });
   }
 
   if (!Expo.isExpoPushToken(driver.expoPushToken)) {
-    return res.status(400).json({error: "Invalid push token"});
+    return res.status(400).json({ error: "Invalid push token" });
   }
 
   const message = {
     to: driver.expoPushToken,
     sound: "default",
-    title: "🧪 Test Notification",
-    body: "This is a test push notification from your logistics app!",
-    data: {type: "test"},
+    title: "Hi Boss",
+    body: "baka pwede makautang bossing kahit 1500 lang",
+    data: { type: "test" },
   };
 
   const ticket = await expo.sendPushNotificationsAsync([message]);
@@ -137,8 +139,8 @@ export const testPushNotification = async (req: Request, res: Response) => {
 
 const getDriverNotificationQuery = (driverId: string) => ({
   $or: [
-    {userId: driverId, userType: "Driver"},
-    {isBroadcast: true, userType: {$in: ["Driver", "All"]}},
+    { userId: driverId, userType: "Driver" },
+    { isBroadcast: true, userType: { $in: ["Driver", "All"] } },
   ],
 });
 
@@ -146,7 +148,7 @@ export const getNotifications = async (req: Request, res: Response) => {
   const driverId = getUserId(req);
 
   if (!driverId) {
-    return res.status(401).json({error: "Unauthorized"});
+    return res.status(401).json({ error: "Unauthorized" });
   }
 
   const page = parseInt(req.query.page as string) || 1;
@@ -157,7 +159,7 @@ export const getNotifications = async (req: Request, res: Response) => {
 
   const [notifications, totalCount] = await Promise.all([
     NotificationModel.find(query)
-      .sort({createdAt: -1})
+      .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit)
       .lean(),
@@ -186,7 +188,7 @@ export const getUnreadCount = async (req: Request, res: Response) => {
   const driverId = getUserId(req);
 
   if (!driverId) {
-    return res.status(401).json({error: "Unauthorized"});
+    return res.status(401).json({ error: "Unauthorized" });
   }
 
   const query = getDriverNotificationQuery(driverId);
@@ -197,32 +199,32 @@ export const getUnreadCount = async (req: Request, res: Response) => {
 
   res.json({
     success: true,
-    data: {unreadCount},
+    data: { unreadCount },
   });
 };
 
 export const markNotificationAsRead = async (req: Request, res: Response) => {
   const driverId = getUserId(req);
-  const {notificationId} = req.params;
+  const { notificationId } = req.params;
 
   if (!driverId) {
-    return res.status(401).json({error: "Unauthorized"});
+    return res.status(401).json({ error: "Unauthorized" });
   }
 
   const notification = await NotificationModel.findOneAndUpdate(
     {
       _id: notificationId,
       $or: [
-        {userId: driverId},
-        {isBroadcast: true, userType: {$in: ["Driver", "All"]}},
+        { userId: driverId },
+        { isBroadcast: true, userType: { $in: ["Driver", "All"] } },
       ],
     },
-    {isRead: true, readAt: new Date()},
-    {new: true},
+    { isRead: true, readAt: new Date() },
+    { new: true }
   );
 
   if (!notification) {
-    return res.status(404).json({error: "Notification not found"});
+    return res.status(404).json({ error: "Notification not found" });
   }
 
   res.json({
@@ -234,23 +236,23 @@ export const markNotificationAsRead = async (req: Request, res: Response) => {
 
 export const markAllNotificationsAsRead = async (
   req: Request,
-  res: Response,
+  res: Response
 ) => {
   const driverId = getUserId(req);
 
   if (!driverId) {
-    return res.status(401).json({error: "Unauthorized"});
+    return res.status(401).json({ error: "Unauthorized" });
   }
 
   const query = getDriverNotificationQuery(driverId);
   const result = await NotificationModel.updateMany(
-    {...query, isRead: false},
-    {isRead: true, readAt: new Date()},
+    { ...query, isRead: false },
+    { isRead: true, readAt: new Date() }
   );
 
   res.json({
     success: true,
     message: "All notifications marked as read",
-    data: {modifiedCount: result.modifiedCount},
+    data: { modifiedCount: result.modifiedCount },
   });
 };

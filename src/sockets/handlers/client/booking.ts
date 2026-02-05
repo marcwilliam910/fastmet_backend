@@ -12,6 +12,7 @@ import { sendNotifToDriver } from "../../../utils/pushNotifications";
 import DriverModel from "../../../models/Driver";
 import { extractCityFromCoords } from "../../../utils/helpers/locationHelpers";
 import { VehicleType } from "../../../models/Vehicle";
+import { isValidDate } from "../../../utils/helpers/date";
 
 export const bookingTimers = new Map<string, NodeJS.Timeout>();
 
@@ -160,7 +161,10 @@ export const requestAsapBooking = (socket: CustomSocket, io: Server) => {
           selectedVehicle: {
             vehicleTypeId: { name: string; freeServices: Partial<Service>[] };
           };
-        }>("selectedVehicle.vehicleTypeId", "name freeServices")
+        }>({
+          path: "selectedVehicle.vehicleTypeId",
+          select: "name freeServices",
+        })
         .lean();
 
       if (!freshBooking || freshBooking.status !== "searching") {
@@ -184,34 +188,39 @@ export const requestAsapBooking = (socket: CustomSocket, io: Server) => {
         .in(vehicleRoom)
         .fetchSockets();
 
-      const newDrivers = availableDriverSockets
-        .map((driverSocket: any) => {
-          const driverLocation = driverSocket.data.location;
-          const driverId = driverSocket.data.userId;
+      // Use a Map to deduplicate drivers (handles multiple sockets per driver)
+      const newDriverMap = new Map<
+        string,
+        { socket: any; driverId: string; distanceKm: number }
+      >();
 
-          if (!driverLocation) return null;
-          if (driverList.has(driverId)) return null;
+      for (const driverSocket of availableDriverSockets) {
+        const driverLocation = driverSocket.data.location;
+        const driverId = driverSocket.data.userId as string | undefined;
 
-          const distance = calculateDistance(pickupCoords, {
-            lat: driverLocation.lat,
-            lng: driverLocation.lng,
-          });
+        if (!driverLocation || !driverId) continue;
+        // Skip if already notified in previous search steps
+        if (driverList.has(driverId)) continue;
+        // Skip if already processed in this search step (handles multiple sockets per driver)
+        if (newDriverMap.has(driverId)) continue;
 
-          console.log(driverSocket.id + " = " + distance);
+        const distance = calculateDistance(pickupCoords, {
+          lat: driverLocation.lat,
+          lng: driverLocation.lng,
+        });
 
-          if (distance > radiusKm) return null;
+        console.log(driverSocket.id + " = " + distance);
 
-          return {
-            socket: driverSocket,
-            driverId,
-            distanceKm: Number(distance.toFixed(2)),
-          };
-        })
-        .filter(Boolean) as {
-        socket: any;
-        driverId: string;
-        distanceKm: number;
-      }[];
+        if (distance > radiusKm) continue;
+
+        newDriverMap.set(driverId, {
+          socket: driverSocket,
+          driverId,
+          distanceKm: Number(distance.toFixed(2)),
+        });
+      }
+
+      const newDrivers = Array.from(newDriverMap.values());
 
       if (newDrivers.length > 0) {
         newDrivers.map((d) => driverList.add(d.driverId));
@@ -235,7 +244,7 @@ export const requestAsapBooking = (socket: CustomSocket, io: Server) => {
             routeData: freshBooking.routeData,
             selectedVehicle: {
               freeServices:
-                freshBooking.selectedVehicle.vehicleTypeId?.freeServices || [],
+                freshBooking.selectedVehicle?.vehicleTypeId?.freeServices || [],
             },
             addedServices: freshBooking.addedServices,
             paymentMethod: freshBooking.paymentMethod,
@@ -294,9 +303,17 @@ export const requestScheduleBooking = (socket: CustomSocket, io: Server) => {
       return;
     }
 
+    if (!isValidDate(data.bookingType.value)) {
+      socket.emit("bookingRequestFailed", {
+        message: "Invalid booking type value",
+      });
+      return;
+    }
+
     // 1. Save booking to DB
     const booking = await BookingModel.create({
       ...data,
+      "bookingType.value": new Date(data.bookingType.value),
       selectedVehicle: {
         vehicleTypeId: new mongoose.Types.ObjectId(
           String(data.selectedVehicle._id)
@@ -368,7 +385,7 @@ export const requestScheduleBooking = (socket: CustomSocket, io: Server) => {
       return;
     }
 
-    // 5. Extract pickup city from address
+    // 5. Extract pickup city from coordinates (polygons have 2km buffer for edge cases)
     const pickupCity = extractCityFromCoords(booking.pickUp.coords);
 
     if (!pickupCity) {
@@ -402,11 +419,41 @@ export const requestScheduleBooking = (socket: CustomSocket, io: Server) => {
     const driverIds = availableDriverSockets.map((s) => s.data.userId);
 
     // Single database query for all drivers
+    // Match drivers who serve this specific city, or "Metro Manila" catch-all
+    // Also match if pickupCity is "Metro Manila" and driver serves any Metro Manila city
     const drivers = await DriverModel.find({
       _id: { $in: driverIds },
       $or: [
         { serviceAreas: pickupCity }, // Match specific city
-        { serviceAreas: "Metro Manila" }, // Or Metro Manila catch-all
+        { serviceAreas: "Metro Manila" }, // Driver serves all of Metro Manila
+        // If pickup is "Metro Manila" (couldn't identify specific city), match any driver with Metro Manila cities
+        ...(pickupCity === "Metro Manila"
+          ? [
+              {
+                serviceAreas: {
+                  $in: [
+                    "Caloocan",
+                    "Las Piñas",
+                    "Makati",
+                    "Malabon",
+                    "Mandaluyong",
+                    "Manila",
+                    "Marikina",
+                    "Muntinlupa",
+                    "Navotas",
+                    "Parañaque",
+                    "Pasay",
+                    "Pasig",
+                    "Pateros",
+                    "Quezon City",
+                    "San Juan",
+                    "Taguig",
+                    "Valenzuela",
+                  ],
+                },
+              },
+            ]
+          : []),
       ],
     })
       .select("_id serviceAreas")
@@ -458,11 +505,11 @@ export const getDriverLocation = (socket: CustomSocket, io: Server) => {
     "getDriverLocation",
     ({ bookingId, driverId }: { bookingId: string; driverId: string }) => {
       // Early validation
-      if (!bookingId || !driverId || !socket.userId) {
+      if (!bookingId || !driverId || !socket.data.userId) {
         return;
       }
 
-      const clientUserId = socket.userId;
+      const clientUserId = socket.data.userId;
 
       console.log("BOOKING ID: ", bookingId);
 

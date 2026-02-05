@@ -18,6 +18,9 @@ import conversationDriverRoute from "./routes/driver/conversationRoute";
 import profileDriverRoute from "./routes/driver/profileRoute";
 import notificationDriverRoutes from "./routes/driver/notificationRoute";
 
+// admin routes
+import driverAdminRoute from "./routes/admin/driverRoute";
+
 // for all
 import vehicleRoute from "./routes/vehicleRoute";
 
@@ -51,7 +54,10 @@ app.use("/api/driver/auth", authDriverRoute);
 app.use("/api/driver/booking", authenticateJWT, driverBookingRoute);
 app.use("/api/driver/profile", authenticateJWT, profileDriverRoute);
 app.use("/api/driver/message", authenticateJWT, conversationDriverRoute);
-app.use("/api/driver/notifications", authenticateJWT, notificationDriverRoutes);
+app.use("/api/driver/notifications", notificationDriverRoutes);
+
+// admin routes
+app.use("/api/admin/driver", driverAdminRoute);
 
 app.use("/api/vehicles", vehicleRoute);
 

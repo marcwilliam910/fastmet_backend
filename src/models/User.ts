@@ -9,7 +9,7 @@ const userSchema = new Schema(
       unique: true,
       trim: true,
     },
-    gender: { type: String },
+    gender: { type: String, enum: ["male", "female", "prefer_not"] },
     address: { type: String },
     profilePictureUrl: { type: String },
     isProfileComplete: { type: Boolean, default: false },

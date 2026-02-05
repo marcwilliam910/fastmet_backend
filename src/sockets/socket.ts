@@ -1,4 +1,4 @@
-import {Server, Socket} from "socket.io";
+import { Server, Socket } from "socket.io";
 import {
   cancelBooking,
   getDriverLocation,
@@ -20,13 +20,17 @@ import {
   updateDriverLocation,
 } from "./handlers/driver/duty";
 import jwt from "jsonwebtoken";
-import {SOCKET_ROOMS} from "../utils/constants";
-import {chatHandler} from "./handlers/chat";
+import { SOCKET_ROOMS } from "../utils/constants";
+import { chatHandler } from "./handlers/chat";
 
-// Extend Socket type to include custom properties
+// Extend Socket type to include custom data properties
 export interface CustomSocket extends Socket {
-  userId: string;
-  userType: "driver" | "client";
+  data: {
+    userId: string;
+    userType: "driver" | "client";
+    location?: { lat: number; lng: number };
+    vehicleType?: string;
+  };
 }
 
 let io: Server;
@@ -63,8 +67,9 @@ export const initSocket = (server: any) => {
         userType: "driver" | "client";
       };
 
-      socket.userId = decoded.id;
-      socket.userType = decoded.userType;
+      // Store in socket.data so it's accessible via fetchSockets() (RemoteSocket)
+      socket.data.userId = decoded.id;
+      socket.data.userType = decoded.userType;
       next();
     } catch (err: any) {
       console.log("❌ JWT Error:", err.message); // ADD THIS
@@ -76,16 +81,16 @@ export const initSocket = (server: any) => {
   io.on("connection", async (s) => {
     const socket = s as CustomSocket;
     console.log(
-      `New ${socket.userType} connected: ${socket.id} (User: ${socket.userId})`,
+      `New ${socket.data.userType} connected: ${socket.id} (User: ${socket.data.userId})`
     );
 
     // Join user's personal room (for targeted emissions)
-    socket.join(socket.userId);
+    socket.join(socket.data.userId);
 
     chatHandler(socket, io);
 
     // Driver-specific handlers
-    if (socket.userType === "driver") {
+    if (socket.data.userType === "driver") {
       toggleOnDuty(socket);
       updateDriverLocation(socket);
       // acceptBooking(socket, io);
@@ -98,7 +103,7 @@ export const initSocket = (server: any) => {
     }
 
     // Client-specific handlers
-    if (socket.userType === "client") {
+    if (socket.data.userType === "client") {
       requestAsapBooking(socket, io);
       requestScheduleBooking(socket, io);
       getDriverLocation(socket, io);
@@ -107,7 +112,7 @@ export const initSocket = (server: any) => {
     }
 
     socket.on("disconnect", () => {
-      console.log(`${socket.userType} disconnected: ${socket.id}`);
+      console.log(`${socket.data.userType} disconnected: ${socket.id}`);
     });
   });
 

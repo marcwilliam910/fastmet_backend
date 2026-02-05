@@ -23,7 +23,7 @@ export const getConversations: RequestHandler = async (req, res) => {
     .limit(limitNum)
     .populate({
       path: "client",
-      select: "fullName profilePictureUrl phoneNumber",
+      select: "fullName profilePictureUrl phoneNumber gender",
     })
     .lean();
 
@@ -42,7 +42,7 @@ export const getConversationById: RequestHandler = async (req, res) => {
   const { conversationId } = req.params;
 
   const conversation = await ConversationModel.findById(conversationId)
-    .populate("client", "fullName profilePictureUrl phoneNumber")
+    .populate("client", "fullName profilePictureUrl phoneNumber gender")
     .lean();
 
   if (!conversation) {

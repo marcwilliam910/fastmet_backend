@@ -1,4 +1,3 @@
-// utils/locationHelpers.ts
 import { isPointInPolygon } from "geolib";
 
 export const METRO_MANILA_CITIES = [
@@ -20,6 +19,57 @@ export const METRO_MANILA_CITIES = [
   "Taguig",
   "Valenzuela",
 ];
+
+// Buffer distance in km to expand city polygons (handles edge cases near boundaries)
+const CITY_POLYGON_BUFFER_KM = 2;
+
+// Approximate conversion: 1 degree latitude ≈ 111 km
+// At latitude 14.5°N (Metro Manila): 1 degree longitude ≈ 107.5 km
+const KM_PER_DEGREE_LAT = 111;
+const KM_PER_DEGREE_LNG = 107.5; // cos(14.5°) * 111
+
+type Coordinate = { latitude: number; longitude: number };
+
+const expandPolygon = (
+  polygon: Coordinate[],
+  bufferKm: number
+): Coordinate[] => {
+  // Calculate centroid
+  const centroid = polygon.reduce(
+    (acc, point) => ({
+      latitude: acc.latitude + point.latitude / polygon.length,
+      longitude: acc.longitude + point.longitude / polygon.length,
+    }),
+    { latitude: 0, longitude: 0 }
+  );
+
+  // Expand each vertex outward from centroid
+  return polygon.map((point) => {
+    // Calculate direction from centroid to point
+    const deltaLat = point.latitude - centroid.latitude;
+    const deltaLng = point.longitude - centroid.longitude;
+
+    // Normalize the direction (accounting for different scales of lat/lng)
+    const normalizedDeltaLat = deltaLat * KM_PER_DEGREE_LAT;
+    const normalizedDeltaLng = deltaLng * KM_PER_DEGREE_LNG;
+    const distance = Math.sqrt(
+      normalizedDeltaLat * normalizedDeltaLat +
+        normalizedDeltaLng * normalizedDeltaLng
+    );
+
+    if (distance === 0) return point;
+
+    // Calculate unit vector in km space
+    const unitLat = normalizedDeltaLat / distance;
+    const unitLng = normalizedDeltaLng / distance;
+
+    // Move point outward by buffer distance, convert back to degrees
+    return {
+      latitude: point.latitude + (unitLat * bufferKm) / KM_PER_DEGREE_LAT,
+      longitude: point.longitude + (unitLng * bufferKm) / KM_PER_DEGREE_LNG,
+    };
+  });
+};
 
 // Metro Manila boundary (matches your client-side polygon)
 export const METRO_MANILA_POLYGON = [
@@ -54,11 +104,8 @@ export const METRO_MANILA_POLYGON = [
   { latitude: 14.775, longitude: 120.93 },
 ];
 
-// City polygons (approximate boundaries for each city)
-const CITY_POLYGONS: Record<
-  string,
-  Array<{ latitude: number; longitude: number }>
-> = {
+// Base city polygons (before buffer expansion)
+const BASE_CITY_POLYGONS: Record<string, Coordinate[]> = {
   Manila: [
     { latitude: 14.565, longitude: 120.97 },
     { latitude: 14.625, longitude: 120.97 },
@@ -186,12 +233,13 @@ const CITY_POLYGONS: Record<
   ],
 };
 
-/**
- * Extract city from coordinates using polygon-based approach
- * More accurate than radius-based or text parsing approaches
- * @param coords - Latitude and longitude coordinates
- * @returns City name or null if not in Metro Manila
- */
+const CITY_POLYGONS: Record<string, Coordinate[]> = Object.fromEntries(
+  Object.entries(BASE_CITY_POLYGONS).map(([city, polygon]) => [
+    city,
+    expandPolygon(polygon, CITY_POLYGON_BUFFER_KM),
+  ])
+);
+
 export const extractCityFromCoords = (coords: {
   lat: number;
   lng: number;
@@ -211,7 +259,7 @@ export const extractCityFromCoords = (coords: {
     return null;
   }
 
-  // Check which specific city the point is in
+  // Check which specific city the point is in (using expanded polygons)
   for (const [city, polygon] of Object.entries(CITY_POLYGONS)) {
     if (isPointInPolygon(point, polygon)) {
       return city;
@@ -219,4 +267,27 @@ export const extractCityFromCoords = (coords: {
   }
 
   return "Metro Manila";
+};
+
+export const isDriverServicingCity = (
+  driverServiceAreas: string[],
+  pickupCity: string
+): boolean => {
+  if (!driverServiceAreas || !pickupCity) return false;
+
+  // Driver serves this specific city
+  if (driverServiceAreas.includes(pickupCity)) return true;
+
+  // Driver has "Metro Manila" catch-all (serves all cities)
+  if (driverServiceAreas.includes("Metro Manila")) return true;
+
+  // Pickup city is "Metro Manila" (couldn't identify specific city)
+  // Match drivers who serve ANY Metro Manila city
+  if (pickupCity === "Metro Manila") {
+    return driverServiceAreas.some((area) =>
+      METRO_MANILA_CITIES.includes(area)
+    );
+  }
+
+  return false;
 };
