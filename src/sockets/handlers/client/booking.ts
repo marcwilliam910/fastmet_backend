@@ -1,20 +1,22 @@
-import { Socket, Server } from "socket.io";
+import { Server } from "socket.io";
 import BookingModel from "../../../models/Booking";
 import { withErrorHandling } from "../../../utils/socketWrapper";
 import { CustomSocket } from "../../socket";
 import { calculateDistance } from "../../../utils/helpers/distanceCalculator";
-import { DRIVER_RADIUS_KM, SOCKET_ROOMS } from "../../../utils/constants";
+import { SOCKET_ROOMS } from "../../../utils/constants";
 import UserModel from "../../../models/User";
 import { RequestBooking, Service } from "../../../types/booking";
 import mongoose from "mongoose";
 import NotificationModel from "../../../models/Notification";
 import { sendNotifToDriver } from "../../../utils/pushNotifications";
 import DriverModel from "../../../models/Driver";
-import { extractCityFromCoords } from "../../../utils/helpers/locationHelpers";
+import {
+  extractCityFromCoords,
+  METRO_MANILA_CITIES,
+} from "../../../utils/helpers/locationHelpers";
 import { VehicleType } from "../../../models/Vehicle";
 import { isValidDate } from "../../../utils/helpers/date";
-
-export const bookingTimers = new Map<string, NodeJS.Timeout>();
+import { bookingExpiryQueue, scheduledReminderQueue } from "../../../queues";
 
 export const requestAsapBooking = (socket: CustomSocket, io: Server) => {
   const on = withErrorHandling(socket);
@@ -49,11 +51,11 @@ export const requestAsapBooking = (socket: CustomSocket, io: Server) => {
       ...data,
       selectedVehicle: {
         vehicleTypeId: new mongoose.Types.ObjectId(
-          String(data.selectedVehicle._id)
+          String(data.selectedVehicle._id),
         ),
         variantId: data.selectedVehicle.variant
           ? new mongoose.Types.ObjectId(
-              String(data.selectedVehicle.variant._id)
+              String(data.selectedVehicle.variant._id),
             )
           : null,
       },
@@ -85,59 +87,20 @@ export const requestAsapBooking = (socket: CustomSocket, io: Server) => {
     });
 
     /* ------------------------------------------------------------------ */
-    /* 2. START 10-MINUTE ABSOLUTE TIMEOUT                                 */
+    /* 2. SCHEDULE 10-MINUTE EXPIRY JOB (BullMQ)                           */
     /* ------------------------------------------------------------------ */
-    const timeoutTimer = setTimeout(async () => {
-      console.log(`⏰ Booking ${booking._id} reached 10-minute timeout`);
-
-      const freshBooking = await BookingModel.findById(booking._id).lean();
-
-      if (freshBooking && freshBooking.status === "searching") {
-        // Delete the booking
-        await BookingModel.findByIdAndDelete(booking._id);
-
-        // Create notification for client
-        await NotificationModel.create({
-          userId: freshBooking.customerId,
-          userType: "Client",
-          title: "Booking Expired",
-          message:
-            "10 minutes has passed but no drivers were available for your delivery request.",
-          type: "booking_expired",
-          data: {
-            bookingId: freshBooking._id,
-            pickUp: freshBooking.pickUp,
-            dropOff: freshBooking.dropOff,
-          },
-        });
-
-        // Notify the customer
-        socket.emit("bookingExpired", {
-          message: "Your booking request has expired",
-        });
-
-        // Notify all drivers in the temporary room
-        const temporaryRoom = `BOOKING_${booking._id}`;
-        io.to(temporaryRoom).emit("bookingExpired", {
-          bookingId: booking._id,
-        });
-
-        // Cleanup room
-        // const socketsInRoom = await io.in(temporaryRoom).fetchSockets();
-        // socketsInRoom.forEach((s) => s.leave(temporaryRoom));
-
-        console.log(
-          `🗑️  Deleted booking ${booking._id} after 10 minutes timeout`
-        );
-      }
-
-      // Clean up timer
-      bookingTimers.delete(String(booking._id));
-    }, 10 * 60 * 1000); // 10 minutes
-
-    // Store the timer
-    bookingTimers.set(String(booking._id), timeoutTimer);
-    console.log(`⏱️  Started 10-minute timer for booking ${booking._id}`);
+    const bookingIdStr = (booking._id as mongoose.Types.ObjectId).toString();
+    await bookingExpiryQueue.add(
+      "expire",
+      { bookingId: bookingIdStr },
+      {
+        delay: 10 * 60 * 1000, // 10 minutes
+        jobId: `expiry-${bookingIdStr}`,
+      },
+    );
+    console.log(
+      `⏱️  Scheduled 10-minute expiry job for booking ${bookingIdStr}`,
+    );
 
     /* ------------------------------------------------------------------ */
     /* 3. Vehicle config & search logic                                    */
@@ -174,7 +137,7 @@ export const requestAsapBooking = (socket: CustomSocket, io: Server) => {
       const radiusKm = freshBooking.currentRadiusKm;
 
       console.log(
-        `🔍 Search step ${freshBooking.searchStep} | radius ${radiusKm}km`
+        `🔍 Search step ${freshBooking.searchStep} | radius ${radiusKm}km`,
       );
 
       socket.emit("radiusExpansion", {
@@ -256,7 +219,7 @@ export const requestAsapBooking = (socket: CustomSocket, io: Server) => {
         });
 
         console.log(
-          `📤 Sent to ${newDrivers.length} drivers (radius ${radiusKm}km)`
+          `📤 Sent to ${newDrivers.length} drivers (radius ${radiusKm}km)`,
         );
       }
 
@@ -264,7 +227,7 @@ export const requestAsapBooking = (socket: CustomSocket, io: Server) => {
 
       if (nextRadius > maxRadiusKm) {
         console.log(
-          `🛑 Max radius reached for booking ${freshBooking.bookingRef}`
+          `🛑 Max radius reached for booking ${freshBooking.bookingRef}`,
         );
         return;
       }
@@ -316,11 +279,11 @@ export const requestScheduleBooking = (socket: CustomSocket, io: Server) => {
       "bookingType.value": new Date(data.bookingType.value),
       selectedVehicle: {
         vehicleTypeId: new mongoose.Types.ObjectId(
-          String(data.selectedVehicle._id)
+          String(data.selectedVehicle._id),
         ),
         variantId: data.selectedVehicle.variant
           ? new mongoose.Types.ObjectId(
-              String(data.selectedVehicle.variant._id)
+              String(data.selectedVehicle.variant._id),
             )
           : null,
       },
@@ -391,7 +354,7 @@ export const requestScheduleBooking = (socket: CustomSocket, io: Server) => {
     if (!pickupCity) {
       console.log(
         "⚠️ Could not extract city from address:",
-        booking.pickUp.address
+        booking.pickUp.address,
       );
       socket.emit("booking_request_failed", {
         message:
@@ -412,7 +375,7 @@ export const requestScheduleBooking = (socket: CustomSocket, io: Server) => {
       .fetchSockets();
 
     console.log(
-      `🔍 Found ${availableDriverSockets.length} available ${vehicleType} drivers`
+      `🔍 Found ${availableDriverSockets.length} available ${vehicleType} drivers`,
     );
 
     // 7. OPTIMIZED: Batch query all driver IDs at once
@@ -431,25 +394,7 @@ export const requestScheduleBooking = (socket: CustomSocket, io: Server) => {
           ? [
               {
                 serviceAreas: {
-                  $in: [
-                    "Caloocan",
-                    "Las Piñas",
-                    "Makati",
-                    "Malabon",
-                    "Mandaluyong",
-                    "Manila",
-                    "Marikina",
-                    "Muntinlupa",
-                    "Navotas",
-                    "Parañaque",
-                    "Pasay",
-                    "Pasig",
-                    "Pateros",
-                    "Quezon City",
-                    "San Juan",
-                    "Taguig",
-                    "Valenzuela",
-                  ],
+                  $in: METRO_MANILA_CITIES,
                 },
               },
             ]
@@ -460,17 +405,17 @@ export const requestScheduleBooking = (socket: CustomSocket, io: Server) => {
       .lean();
 
     console.log(
-      `✅ Found ${drivers.length} drivers servicing ${pickupCity} from database`
+      `✅ Found ${drivers.length} drivers servicing ${pickupCity} from database`,
     );
 
     // Create a Set of eligible driver IDs for fast lookup
     const eligibleDriverIds = new Set(
-      drivers.map((driver) => driver._id.toString())
+      drivers.map((driver) => driver._id.toString()),
     );
 
     // Filter sockets based on database results
     const eligibleDrivers = availableDriverSockets.filter((driverSocket) =>
-      eligibleDriverIds.has(driverSocket.data.userId)
+      eligibleDriverIds.has(driverSocket.data.userId),
     );
 
     if (eligibleDrivers.length === 0) {
@@ -481,7 +426,7 @@ export const requestScheduleBooking = (socket: CustomSocket, io: Server) => {
     }
 
     console.log(
-      `🚗 ${eligibleDrivers.length} ${vehicleType} drivers will receive this booking in ${pickupCity}`
+      `🚗 ${eligibleDrivers.length} ${vehicleType} drivers will receive this booking in ${pickupCity}`,
     );
 
     // 8. Join eligible drivers to booking room
@@ -495,7 +440,7 @@ export const requestScheduleBooking = (socket: CustomSocket, io: Server) => {
     io.to(temporaryRoom).emit("new_booking_request", driverPayload);
 
     console.log(
-      `📤 Scheduled booking ${booking._id} sent to ${eligibleDrivers.length} drivers in ${pickupCity}`
+      `📤 Scheduled booking ${booking._id} sent to ${eligibleDrivers.length} drivers in ${pickupCity}`,
     );
   });
 };
@@ -520,7 +465,7 @@ export const getDriverLocation = (socket: CustomSocket, io: Server) => {
         bookingId,
         clientUserId,
       });
-    }
+    },
   );
 };
 
@@ -545,7 +490,7 @@ export const pickDriver = (socket: CustomSocket, io: Server) => {
       }
 
       console.log(
-        `🚗 Customer attempting to pick driver ${driverId} for booking ${bookingId}`
+        `🚗 Customer attempting to pick driver ${driverId} for booking ${bookingId}`,
       );
 
       // Check if the booking exists and is pending (using lean for read-only check)
@@ -564,7 +509,7 @@ export const pickDriver = (socket: CustomSocket, io: Server) => {
 
       // Check if driver was actually in the requested drivers list
       const wasRequested = existingBooking.requestedDrivers.some(
-        (id) => id.toString() === driverId.toString()
+        (id) => id.toString() === driverId.toString(),
       );
 
       if (!wasRequested) {
@@ -588,7 +533,7 @@ export const pickDriver = (socket: CustomSocket, io: Server) => {
           status: payload.type === "asap" ? "active" : "scheduled",
           acceptedAt: new Date(),
         },
-        { new: true }
+        { new: true },
       );
 
       if (!booking) {
@@ -600,13 +545,39 @@ export const pickDriver = (socket: CustomSocket, io: Server) => {
       }
 
       /* ------------------------------------------------------------------ */
-      /* CLEAR THE TIMEOUT TIMER - Driver was accepted                      */
+      /* REMOVE EXPIRY JOB - Driver was accepted (BullMQ)                   */
       /* ------------------------------------------------------------------ */
-      const timer = bookingTimers.get(bookingId);
-      if (timer) {
-        clearTimeout(timer);
-        bookingTimers.delete(bookingId);
-        console.log(`⏹️  Cleared timeout timer for booking ${bookingId}`);
+      try {
+        const expiryJob = await bookingExpiryQueue.getJob(
+          `expiry-${bookingId}`,
+        );
+        if (expiryJob) {
+          await expiryJob.remove();
+          console.log(`⏹️  Removed expiry job for booking ${bookingId}`);
+        }
+      } catch (err) {
+        console.log(`Could not remove expiry job for ${bookingId}:`, err);
+      }
+
+      /* ------------------------------------------------------------------ */
+      /* SCHEDULE DRIVER REMINDER - 1 hour before pickup (BullMQ)           */
+      /* ------------------------------------------------------------------ */
+      if (payload.type === "schedule") {
+        const pickupTime = new Date(booking.bookingType.value).getTime();
+        const reminderTime = pickupTime - 60 * 60 * 1000; // 1 hour before
+        const delay = Math.max(0, reminderTime - Date.now());
+
+        await scheduledReminderQueue.add(
+          "remind",
+          { bookingId, driverId },
+          {
+            delay,
+            jobId: `reminder-${bookingId}`,
+          },
+        );
+        console.log(
+          `🔔 Scheduled driver reminder for booking ${bookingId} (fires in ${Math.round(delay / 60000)} minutes)`,
+        );
       }
 
       /* ------------------------------------------------------------------ */
@@ -664,7 +635,7 @@ export const pickDriver = (socket: CustomSocket, io: Server) => {
               driverId,
               "Scheduled Booking Confirmed",
               notifMessage,
-              { bookingId: booking._id, type: "new_scheduled_ride" }
+              { bookingId: booking._id, type: "new_scheduled_ride" },
             );
 
             console.log(`📩 Notification created for driver ${driverId}`);
@@ -695,11 +666,11 @@ export const pickDriver = (socket: CustomSocket, io: Server) => {
               requestedDriverIdStr,
               "Booking Taken",
               rejectedMessage,
-              { bookingId: booking._id, type: "booking_taken" }
+              { bookingId: booking._id, type: "booking_taken" },
             );
 
             console.log(
-              `📩 Notification created for rejected driver ${requestedDriverIdStr}`
+              `📩 Notification created for rejected driver ${requestedDriverIdStr}`,
             );
           }
         }
@@ -716,10 +687,10 @@ export const pickDriver = (socket: CustomSocket, io: Server) => {
       socketsInRoom.forEach((s) => s.leave(temporaryRoom));
 
       console.log(
-        `🧹 Cleared ${socketsInRoom.length} sockets from ${temporaryRoom}`
+        `🧹 Cleared ${socketsInRoom.length} sockets from ${temporaryRoom}`,
       );
       console.log(`✅ Booking ${bookingId} assigned to driver ${driverId}`);
-    }
+    },
   );
 };
 
@@ -745,7 +716,7 @@ export const cancelBooking = (socket: CustomSocket, io: Server) => {
         status: "cancelled",
         cancelledAt: new Date(),
       },
-      { new: true }
+      { new: true },
     );
 
     if (!booking) {
@@ -757,13 +728,16 @@ export const cancelBooking = (socket: CustomSocket, io: Server) => {
     }
 
     /* ------------------------------------------------------------------ */
-    /* CLEAR THE TIMEOUT TIMER - Booking was cancelled                    */
+    /* REMOVE EXPIRY JOB - Booking was cancelled (BullMQ)                 */
     /* ------------------------------------------------------------------ */
-    const timer = bookingTimers.get(bookingId);
-    if (timer) {
-      clearTimeout(timer);
-      bookingTimers.delete(bookingId);
-      console.log(`⏹️  Cleared timeout timer for booking ${bookingId}`);
+    try {
+      const expiryJob = await bookingExpiryQueue.getJob(`expiry-${bookingId}`);
+      if (expiryJob) {
+        await expiryJob.remove();
+        console.log(`⏹️  Removed expiry job for booking ${bookingId}`);
+      }
+    } catch (err) {
+      console.log(`Could not remove expiry job for ${bookingId}:`, err);
     }
 
     /* ------------------------------------------------------------------ */
@@ -781,7 +755,7 @@ export const cancelBooking = (socket: CustomSocket, io: Server) => {
     socketsInRoom.forEach((s) => s.leave(temporaryRoom));
 
     console.log(
-      `🧹 Cleared ${socketsInRoom.length} sockets from ${temporaryRoom}`
+      `🧹 Cleared ${socketsInRoom.length} sockets from ${temporaryRoom}`,
     );
     console.log(`✅ Booking ${bookingId} cancelled`);
   });

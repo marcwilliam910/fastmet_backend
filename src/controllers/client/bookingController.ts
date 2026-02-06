@@ -9,7 +9,6 @@ import {
   uploadMultipleImagesToCloudinary,
 } from "../../services/cloudinaryService";
 import { RequestedDriver } from "../../types/booking";
-import { schedule } from "node-cron";
 
 export interface PopulatedDriver {
   _id: mongoose.Types.ObjectId;

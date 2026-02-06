@@ -1,0 +1,87 @@
+import { Worker, Job } from "bullmq";
+import { Server } from "socket.io";
+import redisConnection from "../config/redis";
+import BookingModel from "../models/Booking";
+import NotificationModel from "../models/Notification";
+
+interface BookingExpiryJobData {
+  bookingId: string;
+}
+
+export const startBookingExpiryWorker = (io: Server) => {
+  const worker = new Worker<BookingExpiryJobData>(
+    "bookingExpiry",
+    async (job: Job<BookingExpiryJobData>) => {
+      const { bookingId } = job.data;
+
+      console.log(`⏰ Processing expiry job for booking ${bookingId}`);
+
+      // Check if booking still exists and is still "searching"
+      const booking = await BookingModel.findById(bookingId).lean();
+
+      if (!booking) {
+        console.log(`Booking ${bookingId} no longer exists, skipping`);
+        return;
+      }
+
+      if (booking.status !== "searching") {
+        console.log(
+          `Booking ${bookingId} status is "${booking.status}", not "searching", skipping`,
+        );
+        return;
+      }
+
+      // Delete the booking
+      await BookingModel.findByIdAndDelete(bookingId);
+
+      // Create notification for client
+      await NotificationModel.create({
+        userId: booking.customerId,
+        userType: "Client",
+        title: "Booking Expired",
+        message:
+          "10 minutes has passed but no drivers were available for your delivery request.",
+        type: "booking_expired",
+        data: {
+          bookingId: booking._id,
+          pickUp: booking.pickUp,
+          dropOff: booking.dropOff,
+        },
+      });
+
+      // Notify the customer who created the booking
+      io.to(booking.customerId.toString()).emit("bookingExpired", {
+        message:
+          "10 minutes has passed but no drivers were available for your delivery request.",
+      });
+
+      // Notify all drivers in the temporary room
+      const temporaryRoom = `BOOKING_${bookingId}`;
+      io.to(temporaryRoom).emit("bookingExpired", {
+        bookingId,
+      });
+
+      // Cleanup room - remove all sockets from the room
+      const socketsInRoom = await io.in(temporaryRoom).fetchSockets();
+      socketsInRoom.forEach((s) => s.leave(temporaryRoom));
+
+      console.log(`🗑️  Deleted expired booking ${bookingId}`);
+    },
+    {
+      connection: redisConnection,
+      concurrency: 5, // Process up to 5 jobs concurrently
+    },
+  );
+
+  worker.on("completed", (job) => {
+    console.log(`✅ Expiry job ${job.id} completed`);
+  });
+
+  worker.on("failed", (job, err) => {
+    console.error(`❌ Expiry job ${job?.id} failed:`, err);
+  });
+
+  console.log("📦 Booking expiry worker started");
+
+  return worker;
+};

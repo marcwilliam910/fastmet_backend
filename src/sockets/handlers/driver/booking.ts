@@ -224,15 +224,27 @@ export const requestAcceptance = (socket: CustomSocket, io: Server) => {
       }
 
       // Parallelize independent queries: scheduled bookings, driver info, and total bookings count
+      const driverObjectId = new mongoose.Types.ObjectId(driverId);
+
       const [scheduledBookings, driver, totalBookings] = await Promise.all([
         BookingModel.find({
-          driverId: driverId,
-          status: "scheduled",
-          "bookingType.type": "schedule",
+          $or: [
+            {
+              driverId: driverObjectId,
+              status: "scheduled",
+              "bookingType.type": "schedule",
+            },
+            {
+              requestedDrivers: driverObjectId,
+              status: "pending",
+              driverId: null,
+              "bookingType.type": "schedule",
+            },
+          ],
         }).lean(),
         DriverModel.findById(driverId).lean(),
         BookingModel.countDocuments({
-          driverId: new mongoose.Types.ObjectId(driverId),
+          driverId: driverObjectId,
           status: "completed",
         }),
       ]);

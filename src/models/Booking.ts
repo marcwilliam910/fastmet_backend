@@ -36,8 +36,6 @@ export interface IBooking extends Document {
   completedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
-  notificationSent: boolean;
-  notifiedAt: Date | null;
   bookingImages: {
     pickup: {
       beforeImageUrl: string | null;
@@ -59,6 +57,9 @@ export interface IBooking extends Document {
   // for searching drivers
   searchStep: number;
   currentRadiusKm: number;
+  // driver notif scheduled booking
+  notificationSent: boolean;
+  notifiedAt: Date | null;
 }
 
 const bookingSchema: Schema = new Schema<IBooking>(
@@ -224,7 +225,7 @@ const bookingSchema: Schema = new Schema<IBooking>(
       default: 0.1, // 100 meters
     },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 // Indexes for efficient querying

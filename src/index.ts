@@ -2,6 +2,8 @@ import express from "express";
 import cors from "cors";
 import http from "http";
 import dotenv from "dotenv";
+dotenv.config();
+
 import mongoose from "mongoose";
 import { errorHandler } from "./middlewares/errorHandler";
 import { getIO, initSocket } from "./sockets/socket";
@@ -25,12 +27,9 @@ import driverAdminRoute from "./routes/admin/driverRoute";
 import vehicleRoute from "./routes/vehicleRoute";
 
 import { authenticateJWT } from "./middlewares/verifyToken";
-import { startNotificationCron } from "./services/notificationCron";
-import { startBookingCleanupCron } from "./services/bookingCleanupCron";
-import { restoreBookingTimers } from "./utils/helpers/timerCleanup";
+import { startBookingExpiryWorker } from "./workers/bookingExpiryWorker";
+import { startScheduledReminderWorker } from "./workers/scheduledReminderWorker";
 import { syncIndexes } from "./scripts/syncIndexes";
-
-dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -79,13 +78,11 @@ mongoose
     server.listen(PORT, () => {
       console.log(`Server running at http://localhost:${PORT}`);
 
-      // ✅ Start cron AFTER MongoDB is connected and server is listening
-      startNotificationCron();
-      console.log("⏰ Notification cron job initialized");
-
+      // ✅ Start BullMQ workers AFTER MongoDB is connected and server is listening
       const io = getIO();
-      startBookingCleanupCron(io);
-      restoreBookingTimers(io);
+      startBookingExpiryWorker(io);
+      startScheduledReminderWorker();
+      console.log("⏰ BullMQ workers initialized");
     });
   })
   .catch((err) => {
