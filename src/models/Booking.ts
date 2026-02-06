@@ -2,7 +2,6 @@ import { Schema, Document, model } from "mongoose";
 import { LocationDetails, Service } from "../types/booking";
 import { ILoadVariant } from "./Vehicle";
 
-
 export interface IBooking extends Document {
   customerId: Schema.Types.ObjectId;
   bookingRef: string;
@@ -55,6 +54,8 @@ export interface IBooking extends Document {
   driverRating: number | null;
   requestedDrivers: Schema.Types.ObjectId[];
   cancelledAt: Date | null;
+  driverRead: boolean;
+  clientRead: boolean;
   // for searching drivers
   searchStep: number;
   currentRadiusKm: number;
@@ -96,7 +97,11 @@ const bookingSchema: Schema = new Schema<IBooking>(
       value: { type: Schema.Types.Mixed, required: true },
     },
     selectedVehicle: {
-      vehicleTypeId: { type: Schema.Types.ObjectId, required: true, ref: "VehicleType" },
+      vehicleTypeId: {
+        type: Schema.Types.ObjectId,
+        required: true,
+        ref: "VehicleType",
+      },
       variantId: { type: Schema.Types.ObjectId },
     },
     routeData: {
@@ -202,17 +207,24 @@ const bookingSchema: Schema = new Schema<IBooking>(
       type: Date,
       default: null,
     },
+    driverRead: {
+      type: Boolean,
+      default: false,
+    },
+    clientRead: {
+      type: Boolean,
+      default: false,
+    },
     searchStep: {
       type: Number,
       default: 0,
     },
-
     currentRadiusKm: {
       type: Number,
       default: 0.1, // 100 meters
     },
   },
-  { timestamps: true },
+  { timestamps: true }
 );
 
 // Indexes for efficient querying
@@ -222,8 +234,8 @@ bookingSchema.index({ customerId: 1, status: 1, createdAt: -1 });
 // 2. Client cancelled bookings: customerId + status + cancelledAt (desc)
 bookingSchema.index({ customerId: 1, status: 1, cancelledAt: -1 });
 
-// 3. Driver bookings: driverId + status
-bookingSchema.index({ driverId: 1, status: 1 });
+// 3. Driver bookings: driverId + status + driverRead
+bookingSchema.index({ driverId: 1, status: 1, driverRead: 1 });
 
 // 4. Driver scheduled bookings with date filter: driverId + status + bookingType.value
 bookingSchema.index({ driverId: 1, status: 1, "bookingType.value": 1 });
@@ -246,23 +258,11 @@ bookingSchema.index({
   "bookingType.value": 1,
 });
 
-bookingSchema.index({
-  status: 1,
-  "bookingType.type": 1,
-  "selectedVehicle.vehicleTypeId": 1,
-  "selectedVehicle.variantId": 1,
-  "bookingType.value": 1,
-  requestedDrivers: 1,
-});
-
-// 7. Active booking check: status + driverId
-bookingSchema.index({ status: 1, driverId: 1 });
-
-// 8. Requested drivers check: requestedDrivers array
+// 7. Requested drivers check: requestedDrivers array
 // Note: bookingRef is already indexed automatically due to unique constraint
 bookingSchema.index({ requestedDrivers: 1 });
 
-// 10. Driver completed bookings aggregation: driverId + status + createdAt (desc)
+// 8. Driver completed bookings aggregation: driverId + status + createdAt (desc)
 bookingSchema.index({ driverId: 1, status: 1, createdAt: -1 });
 
 const BookingModel = model<IBooking>("Booking", bookingSchema);

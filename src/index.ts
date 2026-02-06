@@ -28,6 +28,7 @@ import { authenticateJWT } from "./middlewares/verifyToken";
 import { startNotificationCron } from "./services/notificationCron";
 import { startBookingCleanupCron } from "./services/bookingCleanupCron";
 import { restoreBookingTimers } from "./utils/helpers/timerCleanup";
+import { syncIndexes } from "./scripts/syncIndexes";
 
 dotenv.config();
 
@@ -39,7 +40,7 @@ app.use(
     origin: "*",
     methods: ["GET", "POST", "PUT", "DELETE"],
     credentials: true,
-  })
+  }),
 );
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -54,7 +55,7 @@ app.use("/api/driver/auth", authDriverRoute);
 app.use("/api/driver/booking", authenticateJWT, driverBookingRoute);
 app.use("/api/driver/profile", authenticateJWT, profileDriverRoute);
 app.use("/api/driver/message", authenticateJWT, conversationDriverRoute);
-app.use("/api/driver/notifications", notificationDriverRoutes);
+app.use("/api/driver/notifications", authenticateJWT, notificationDriverRoutes);
 
 // admin routes
 app.use("/api/admin/driver", driverAdminRoute);
@@ -71,6 +72,9 @@ mongoose
   .connect(process.env.MONGODB_URI!)
   .then(async () => {
     console.log("MongoDB connected");
+
+    // await syncIndexes();
+    // console.log("Indexes synchronized");
 
     server.listen(PORT, () => {
       console.log(`Server running at http://localhost:${PORT}`);

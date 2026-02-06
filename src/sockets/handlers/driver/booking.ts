@@ -40,7 +40,7 @@ export const driverLocation = (socket: CustomSocket, io: Server) => {
 
       // Send location back to the client
       io.to(clientUserId).emit("driverLocationResponse", { driverLoc });
-    },
+    }
   );
 };
 
@@ -117,7 +117,7 @@ export const handleStartScheduledTrip = (socket: CustomSocket) => {
       if (minutesUntil > 15) {
         socket.emit("startScheduledTripError", {
           message: `Too early. You can start this trip ${Math.ceil(
-            minutesUntil - 15,
+            minutesUntil - 15
           )} minutes from now.`,
         });
         return;
@@ -130,7 +130,7 @@ export const handleStartScheduledTrip = (socket: CustomSocket) => {
           $set: {
             status: "active",
           },
-        },
+        }
       );
 
       console.log(`✅ Trip ${bookingId} status changed: scheduled → active`);
@@ -161,7 +161,7 @@ export const handleStartScheduledTrip = (socket: CustomSocket) => {
         {
           bookingId: bookingId,
           type: "driver_started_scheduled_trip",
-        },
+        }
       );
 
       // Get customerId for notification (already have it from booking above)
@@ -173,7 +173,7 @@ export const handleStartScheduledTrip = (socket: CustomSocket) => {
       //     message: "Your driver has started the trip and is on the way!",
       //   });
       // }
-    },
+    }
   );
 };
 
@@ -242,7 +242,7 @@ export const requestAcceptance = (socket: CustomSocket, io: Server) => {
       if (payload.type === "asap") {
         const result = await canAcceptAsapBooking(
           bookingId,
-          scheduledBookings as any as IBooking[],
+          scheduledBookings as any as IBooking[]
         );
 
         if (!result.ok) {
@@ -257,7 +257,7 @@ export const requestAcceptance = (socket: CustomSocket, io: Server) => {
       if (payload.type === "schedule") {
         const result = await canAcceptScheduledBooking(
           bookingId,
-          scheduledBookings as any as IBooking[],
+          scheduledBookings as any as IBooking[]
         );
         if (!result.ok) {
           socket.emit("requestAcceptanceError", {
@@ -307,7 +307,11 @@ export const requestAcceptance = (socket: CustomSocket, io: Server) => {
         });
 
         // Create notification + push for scheduled booking offer
-        const notifMessage = `${payload.name} has offered to handle your scheduled delivery from ${booking.pickUp?.address || "pickup"} to ${booking.dropOff?.address || "destination"}`;
+        const notifMessage = `${
+          payload.name
+        } has offered to handle your scheduled delivery from ${
+          booking.pickUp?.name || "pickup"
+        } to ${booking.dropOff?.name || "destination"}`;
 
         await NotificationModel.create({
           userId: clientUserId,
@@ -331,11 +335,11 @@ export const requestAcceptance = (socket: CustomSocket, io: Server) => {
           {
             bookingId: booking._id,
             type: "driver_offer",
-          },
+          }
         );
 
         console.log(
-          `📩 Notification sent to client ${clientUserId} for driver offer`,
+          `📩 Notification sent to client ${clientUserId} for driver offer`
         );
       }
 
@@ -346,7 +350,7 @@ export const requestAcceptance = (socket: CustomSocket, io: Server) => {
         bookingId,
         type: payload.type,
       });
-    },
+    }
   );
 };
 
@@ -368,13 +372,13 @@ export const cancelOffer = (socket: CustomSocket, io: Server) => {
 
       await BookingModel.updateOne(
         { _id: bookingId },
-        { $pull: { requestedDrivers: id } },
+        { $pull: { requestedDrivers: id } }
       );
 
       socket.emit("offerCancelledConfirmed", { bookingId });
 
       io.to(clientId).emit("offerCancelled", { driverId: id });
-    },
+    }
   );
 };
 
@@ -391,8 +395,8 @@ export const arrivedAtPickup = (socket: CustomSocket) => {
         {
           bookingId: payload.bookingId,
           type: "driver_arrived_at_pickup",
-        },
+        }
       );
-    },
+    }
   );
 };

@@ -60,7 +60,7 @@ export const getBookingsByStatus: RequestHandler = async (req, res) => {
     .sort(
       status === "cancelled"
         ? { cancelledAt: -1, _id: -1 }
-        : { createdAt: -1, _id: -1 },
+        : { createdAt: -1, _id: -1 }
     )
     .skip((pageNum - 1) * limitNum)
     .limit(limitNum)
@@ -95,7 +95,7 @@ export const getBookingsByStatus: RequestHandler = async (req, res) => {
     ]);
 
     completedMap = new Map(
-      completedCounts.map((d) => [d._id.toString(), d.total]),
+      completedCounts.map((d) => [d._id.toString(), d.total])
     );
   }
 
@@ -118,7 +118,12 @@ export const getBookingsByStatus: RequestHandler = async (req, res) => {
           }))
         : [];
 
-    const { driverId, requestedDrivers: _, selectedVehicle, ...bookingData } = booking as any;
+    const {
+      driverId,
+      requestedDrivers: _,
+      selectedVehicle,
+      ...bookingData
+    } = booking as any;
 
     return {
       ...bookingData,
@@ -199,6 +204,7 @@ export const getBookingsCount: RequestHandler = async (req, res) => {
     return res.status(400).json({ message: "Missing user ID" });
   }
 
+  // Main aggregation: total count by status
   const result = await BookingModel.aggregate([
     { $match: { customerId: new mongoose.Types.ObjectId(clientId) } },
     {
@@ -209,7 +215,24 @@ export const getBookingsCount: RequestHandler = async (req, res) => {
     },
   ]);
 
-  // Convert aggregation result to clean object:
+  // Aggregation for unread completed/cancelled counts (clientRead: false)
+  const unreadCountsAgg = await BookingModel.aggregate([
+    {
+      $match: {
+        customerId: new mongoose.Types.ObjectId(clientId),
+        clientRead: false,
+        status: { $in: ["completed", "cancelled"] },
+      },
+    },
+    {
+      $group: {
+        _id: "$status",
+        count: { $sum: 1 },
+      },
+    },
+  ]);
+
+  // Convert main aggregation result to object
   const counts: Record<string, number> = {
     pending: 0,
     scheduled: 0,
@@ -222,11 +245,22 @@ export const getBookingsCount: RequestHandler = async (req, res) => {
     counts[r._id] = r.count;
   }
 
+  // Handle possible implicit 'any' type error
+  let unreadCompleted = 0;
+  let unreadCancelled = 0;
+  for (const r of unreadCountsAgg) {
+    if (r._id === "completed") {
+      unreadCompleted = r.count;
+    } else if (r._id === "cancelled") {
+      unreadCancelled = r.count;
+    }
+  }
+
   res.status(200).json({
     pending: counts.pending + counts.scheduled,
     active: counts.active,
-    completed: counts.completed,
-    cancelled: counts.cancelled,
+    completed: unreadCompleted,
+    cancelled: unreadCancelled,
   });
 };
 
@@ -255,7 +289,7 @@ export const uploadBookingImage: RequestHandler = async (req, res) => {
     const images = await uploadMultipleImagesToCloudinary(
       files,
       `fastmet/clients/${getSecureFolderId(clientId)}/bookings/${bookingRef}`,
-      "booking", // Uses booking config: 1200px, 80% quality
+      "booking" // Uses booking config: 1200px, 80% quality
     );
 
     return res.json({
@@ -350,8 +384,32 @@ export const updatePartialBookingData: RequestHandler = async (req, res) => {
   const updatedBooking = await BookingModel.findOneAndUpdate(
     { _id: bookingId },
     { $set: updateData },
-    { new: true },
+    { new: true }
   );
 
   res.status(200).json(updatedBooking);
+};
+
+export const markBookingAsRead: RequestHandler = async (req, res) => {
+  const clientId = getUserId(req);
+
+  if (!clientId) {
+    return res.status(400).json({ message: "Missing user ID" });
+  }
+
+  const { status } = req.query as { status: "completed" | "cancelled" };
+
+  if (!status || !["completed", "cancelled"].includes(status)) {
+    return res.status(400).json({ message: "Invalid status" });
+  }
+
+  const result = await BookingModel.updateMany(
+    { customerId: new mongoose.Types.ObjectId(clientId), status },
+    { clientRead: true }
+  );
+
+  res.status(200).json({
+    message: "Bookings marked as read",
+    modifiedCount: result.modifiedCount,
+  });
 };

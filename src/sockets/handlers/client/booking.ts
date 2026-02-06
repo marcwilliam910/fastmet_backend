@@ -641,8 +641,8 @@ export const pickDriver = (socket: CustomSocket, io: Server) => {
           // Create notification + push for scheduled booking only
           if (payload.type === "schedule") {
             const notifMessage = `You have been selected for a scheduled delivery from ${
-              booking.pickUp?.address || "pickup"
-            } to ${booking.dropOff?.address || "destination"}`;
+              booking.pickUp?.name || "pickup"
+            } to ${booking.dropOff?.name || "destination"}`;
 
             await NotificationModel.create({
               userId: driverId,
@@ -676,8 +676,8 @@ export const pickDriver = (socket: CustomSocket, io: Server) => {
           // Create notification + push for rejected drivers (scheduled booking only)
           if (payload.type === "schedule") {
             const rejectedMessage = `Another driver was selected for the ${
-              booking.pickUp?.address || "pickup"
-            } to ${booking.dropOff?.address || "destination"} booking.`;
+              booking.pickUp?.name || "pickup"
+            } to ${booking.dropOff?.name || "destination"} booking.`;
 
             await NotificationModel.create({
               userId: requestedDriverIdStr,
