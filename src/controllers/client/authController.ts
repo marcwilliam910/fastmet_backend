@@ -120,7 +120,15 @@ export const verifyOTP: RequestHandler = async (req, res) => {
       fullName: user.fullName,
       profilePictureUrl: user.profilePictureUrl,
       phoneNumber: user.phoneNumber,
-      address: user.address,
+      address:
+        user.address &&
+        typeof user.address === "object" &&
+        "coords" in (user.address as any) &&
+        (user.address as any).coords &&
+        typeof (user.address as any).coords.lat === "number" &&
+        typeof (user.address as any).coords.lng === "number"
+          ? user.address
+          : null,
       gender: user.gender,
     },
   });
