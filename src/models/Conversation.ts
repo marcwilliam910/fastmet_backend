@@ -21,7 +21,7 @@ const ConversationSchema = new mongoose.Schema(
       driver: { type: Number, default: 0 },
     },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 // Indexes for efficient querying
@@ -31,11 +31,11 @@ ConversationSchema.index({ client: 1 });
 // 2. Driver conversations (already exists)
 ConversationSchema.index({ driver: 1 });
 
-// 3. Client conversations pagination: client + updatedAt (desc)
-ConversationSchema.index({ client: 1, updatedAt: -1 });
+// 3. Client conversations pagination: client + lastMessageAt (desc)
+ConversationSchema.index({ client: 1, lastMessageAt: -1 });
 
-// 4. Driver conversations pagination: driver + updatedAt (desc)
-ConversationSchema.index({ driver: 1, updatedAt: -1 });
+// 4. Driver conversations pagination: driver + lastMessageAt (desc)
+ConversationSchema.index({ driver: 1, lastMessageAt: -1 });
 
 // 5. Client unread count queries: client + unreadCount.client
 ConversationSchema.index({ client: 1, "unreadCount.client": 1 });

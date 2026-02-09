@@ -2,6 +2,8 @@ import { RequestHandler } from "express";
 import mongoose from "mongoose";
 import ConversationModel from "../../models/Conversation";
 import { getUserId } from "../../utils/helpers/getUserId";
+import User from "../../models/User";
+import Conversation from "../../models/Conversation";
 
 export const getConversations: RequestHandler = async (req, res) => {
   const driverId = getUserId(req);
@@ -18,7 +20,7 @@ export const getConversations: RequestHandler = async (req, res) => {
     driver: new mongoose.Types.ObjectId(driverId),
     lastMessageAt: { $ne: null },
   })
-    .sort({ updatedAt: -1 })
+    .sort({ lastMessageAt: -1 })
     .skip((pageNum - 1) * limitNum)
     .limit(limitNum)
     .populate({
@@ -93,4 +95,30 @@ export const getConversationById: RequestHandler = async (req, res) => {
   }
 
   res.json(conversation);
+};
+
+export const getConversationByName: RequestHandler = async (req, res) => {
+  const { name } = req.params;
+
+  // First, find all clients matching the name
+  const clients = await User.find({
+    fullName: { $regex: name, $options: "i" },
+  }).select("_id");
+
+  const clientIds = clients.map((client) => client._id);
+
+  // Then find conversations with those client IDs
+  const conversations = await Conversation.find({
+    client: { $in: clientIds },
+  })
+    .populate({
+      path: "client",
+      select: "fullName profilePictureUrl phoneNumber gender",
+    })
+    .sort({ lastMessageAt: -1 })
+    .lean();
+
+  res.status(200).json({
+    conversations,
+  });
 };

@@ -16,8 +16,9 @@ export const getConversations: RequestHandler = async (req, res) => {
 
   const conversations = await ConversationModel.find({
     client: new mongoose.Types.ObjectId(clientId),
+    lastMessageAt: { $ne: null },
   })
-    .sort({ updatedAt: -1 })
+    .sort({ lastMessageAt: -1 })
     .skip((pageNum - 1) * limitNum)
     .limit(limitNum)
     .populate({

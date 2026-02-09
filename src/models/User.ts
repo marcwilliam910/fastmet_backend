@@ -5,7 +5,7 @@ const userAddressCoordsSchema = new Schema(
     lat: { type: Number, required: true },
     lng: { type: Number, required: true },
   },
-  { _id: false }
+  { _id: false },
 );
 
 const userAddressSchema = new Schema(
@@ -19,7 +19,7 @@ const userAddressSchema = new Schema(
     province: { type: String, default: undefined },
     postalCode: { type: String, default: undefined },
   },
-  { _id: false }
+  { _id: false },
 );
 
 const userSchema = new Schema(
@@ -44,8 +44,10 @@ const userSchema = new Schema(
       default: true,
     },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
+
+userSchema.index({ fullName: "text" });
 
 const UserModel = model("User", userSchema);
 export default UserModel;
