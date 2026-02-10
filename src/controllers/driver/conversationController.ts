@@ -99,17 +99,32 @@ export const getConversationById: RequestHandler = async (req, res) => {
 
 export const getConversationByName: RequestHandler = async (req, res) => {
   const { name } = req.params;
+  const driverId = getUserId(req);
+
+  // Validate input
+  if (!name || name.trim().length === 0) {
+    return res.status(400).json({ message: "Name parameter is required" });
+  }
+
+  // Escape special regex characters to prevent regex injection
+  const escapedName = name.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
   // First, find all clients matching the name
   const clients = await User.find({
-    fullName: { $regex: name, $options: "i" },
+    fullName: { $regex: escapedName, $options: "i" },
   }).select("_id");
+
+  // Early return if no clients found
+  if (clients.length === 0) {
+    return res.status(200).json({ conversations: [] });
+  }
 
   const clientIds = clients.map((client) => client._id);
 
   // Then find conversations with those client IDs
   const conversations = await Conversation.find({
     client: { $in: clientIds },
+    driver: new mongoose.Types.ObjectId(driverId),
   })
     .populate({
       path: "client",

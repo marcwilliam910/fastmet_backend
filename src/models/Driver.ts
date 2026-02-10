@@ -160,7 +160,7 @@ const driverSchema = new Schema<IDriver>(
       default: [],
     },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 // Indexes for efficient querying
@@ -176,6 +176,8 @@ driverSchema.index({ vehicle: 1 });
 // 4. Service area + approval status compound (for finding approved drivers in areas)
 driverSchema.index({ serviceAreas: 1, approvalStatus: 1 });
 // Note: phoneNumber and licenseNumber are already indexed automatically due to unique constraint
+
+driverSchema.index({ firstName: 1, lastName: 1 });
 
 const DriverModel = model<IDriver>("Driver", driverSchema);
 export default DriverModel;

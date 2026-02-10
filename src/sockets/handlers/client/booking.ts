@@ -348,7 +348,7 @@ export const requestScheduleBooking = (socket: CustomSocket, io: Server) => {
       return;
     }
 
-    // 5. Extract pickup city from coordinates (polygons have 2km buffer for edge cases)
+    // 5. 🔧 Extract pickup city using IMPROVED function (polygons have 2km buffer for edge cases)
     const pickupCity = extractCityFromCoords(booking.pickUp.coords);
 
     if (!pickupCity) {
@@ -378,28 +378,31 @@ export const requestScheduleBooking = (socket: CustomSocket, io: Server) => {
       `🔍 Found ${availableDriverSockets.length} available ${vehicleType} drivers`,
     );
 
-    // 7. OPTIMIZED: Batch query all driver IDs at once
+    // 7. 🔧 SIMPLIFIED: Batch query drivers with matching service areas
     const driverIds = availableDriverSockets.map((s) => s.data.userId);
 
-    // Single database query for all drivers
-    // Match drivers who serve this specific city, or "Metro Manila" catch-all
-    // Also match if pickupCity is "Metro Manila" and driver serves any Metro Manila city
+    // Build query conditions based on pickupCity
+    let serviceAreaQuery;
+
+    if (pickupCity === "Metro Manila") {
+      // 🔧 RARE CASE: Unknown city - only match drivers with "Metro Manila" catch-all
+      serviceAreaQuery = { serviceAreas: "Metro Manila" };
+      console.log(
+        `⚠️ Rare case: Pickup city unknown, matching only "Metro Manila" drivers`,
+      );
+    } else {
+      // 🔧 NORMAL CASE: Match drivers who serve this specific city OR "Metro Manila" catch-all
+      serviceAreaQuery = {
+        $or: [
+          { serviceAreas: pickupCity }, // Driver serves this specific city
+          { serviceAreas: "Metro Manila" }, // Driver serves all of Metro Manila
+        ],
+      };
+    }
+
     const drivers = await DriverModel.find({
       _id: { $in: driverIds },
-      $or: [
-        { serviceAreas: pickupCity }, // Match specific city
-        { serviceAreas: "Metro Manila" }, // Driver serves all of Metro Manila
-        // If pickup is "Metro Manila" (couldn't identify specific city), match any driver with Metro Manila cities
-        ...(pickupCity === "Metro Manila"
-          ? [
-              {
-                serviceAreas: {
-                  $in: METRO_MANILA_CITIES,
-                },
-              },
-            ]
-          : []),
-      ],
+      ...serviceAreaQuery,
     })
       .select("_id serviceAreas")
       .lean();

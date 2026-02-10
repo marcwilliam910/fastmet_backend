@@ -3,11 +3,11 @@ import BookingModel from "../../models/Booking";
 import mongoose from "mongoose";
 import { getUserId } from "../../utils/helpers/getUserId";
 import sharp from "sharp";
-import cloudinary from "../../config/cloudinary";
 import {
   getSecureFolderId,
   uploadWatermarkedImageToCloudinary,
 } from "../../services/cloudinaryService";
+import { getLateBoundary } from "../../utils/helpers/date";
 
 export const getBookings: RequestHandler = async (req, res) => {
   const driverId = getUserId(req);
@@ -29,6 +29,10 @@ export const getBookings: RequestHandler = async (req, res) => {
 
     const bookings = await BookingModel.find(query)
       .populate({
+        path: "customerId",
+        select: "fullName profilePictureUrl phoneNumber",
+      })
+      .populate({
         path: "selectedVehicle.vehicleTypeId",
         select: "name freeServices",
       })
@@ -41,12 +45,18 @@ export const getBookings: RequestHandler = async (req, res) => {
 
     // Format bookings with selectedVehicle info
     const formattedBookings = bookings.map((booking: any) => {
-      const { selectedVehicle, ...rest } = booking;
+      const { selectedVehicle, customerId, ...rest } = booking;
       return {
         ...rest,
         selectedVehicle: {
           name: selectedVehicle?.vehicleTypeId?.name || null,
           freeServices: selectedVehicle?.vehicleTypeId?.freeServices || [],
+        },
+        client: {
+          id: customerId._id,
+          name: customerId.fullName,
+          profilePictureUrl: customerId.profilePictureUrl,
+          phoneNumber: customerId.phoneNumber,
         },
       };
     });
@@ -57,23 +67,20 @@ export const getBookings: RequestHandler = async (req, res) => {
     });
   }
 
-  // Handle regular bookings (active, scheduled, completed)
-  const now = new Date();
-  const lateThresholdMinutes = 30;
-  const lateBoundary = new Date(
-    now.getTime() - lateThresholdMinutes * 60 * 1000,
-  );
-
   const query: any = {
     driverId: new mongoose.Types.ObjectId(driverId),
     status,
   };
 
   if (status === "scheduled") {
-    query["bookingType.value"] = { $gte: lateBoundary };
+    query["bookingType.value"] = { $gte: getLateBoundary() };
   }
 
   const bookings = await BookingModel.find(query)
+    .populate({
+      path: "customerId",
+      select: "fullName profilePictureUrl phoneNumber",
+    })
     .populate({
       path: "selectedVehicle.vehicleTypeId",
       select: "name freeServices",
@@ -87,12 +94,18 @@ export const getBookings: RequestHandler = async (req, res) => {
 
   // Format bookings with selectedVehicle info
   const formattedBookings = bookings.map((booking: any) => {
-    const { selectedVehicle, ...rest } = booking;
+    const { selectedVehicle, customerId, ...rest } = booking;
     return {
       ...rest,
       selectedVehicle: {
         name: selectedVehicle?.vehicleTypeId?.name || null,
         freeServices: selectedVehicle?.vehicleTypeId?.freeServices || [],
+      },
+      client: {
+        id: customerId._id,
+        name: customerId.fullName,
+        profilePictureUrl: customerId.profilePictureUrl,
+        phoneNumber: customerId.phoneNumber,
       },
     };
   });

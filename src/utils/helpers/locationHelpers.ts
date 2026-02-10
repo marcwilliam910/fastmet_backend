@@ -20,7 +20,7 @@ export const METRO_MANILA_CITIES = [
   "Valenzuela",
 ];
 
-// Buffer distance in km to expand city polygons (handles edge cases near boundaries)
+// Buffer distance in km to expand city polygons
 const CITY_POLYGON_BUFFER_KM = 2;
 
 // Approximate conversion: 1 degree latitude ≈ 111 km
@@ -32,7 +32,7 @@ type Coordinate = { latitude: number; longitude: number };
 
 const expandPolygon = (
   polygon: Coordinate[],
-  bufferKm: number
+  bufferKm: number,
 ): Coordinate[] => {
   // Calculate centroid
   const centroid = polygon.reduce(
@@ -40,7 +40,7 @@ const expandPolygon = (
       latitude: acc.latitude + point.latitude / polygon.length,
       longitude: acc.longitude + point.longitude / polygon.length,
     }),
-    { latitude: 0, longitude: 0 }
+    { latitude: 0, longitude: 0 },
   );
 
   // Expand each vertex outward from centroid
@@ -54,7 +54,7 @@ const expandPolygon = (
     const normalizedDeltaLng = deltaLng * KM_PER_DEGREE_LNG;
     const distance = Math.sqrt(
       normalizedDeltaLat * normalizedDeltaLat +
-        normalizedDeltaLng * normalizedDeltaLng
+        normalizedDeltaLng * normalizedDeltaLng,
     );
 
     if (distance === 0) return point;
@@ -237,9 +237,36 @@ const CITY_POLYGONS: Record<string, Coordinate[]> = Object.fromEntries(
   Object.entries(BASE_CITY_POLYGONS).map(([city, polygon]) => [
     city,
     expandPolygon(polygon, CITY_POLYGON_BUFFER_KM),
-  ])
+  ]),
 );
 
+// Helper to calculate distance from point to polygon centroid
+const getDistanceToPolygonCenter = (
+  point: Coordinate,
+  polygon: Coordinate[],
+): number => {
+  const centroid = polygon.reduce(
+    (acc, p) => ({
+      latitude: acc.latitude + p.latitude / polygon.length,
+      longitude: acc.longitude + p.longitude / polygon.length,
+    }),
+    { latitude: 0, longitude: 0 },
+  );
+
+  const latDiff = (point.latitude - centroid.latitude) * KM_PER_DEGREE_LAT;
+  const lngDiff = (point.longitude - centroid.longitude) * KM_PER_DEGREE_LNG;
+
+  return Math.sqrt(latDiff * latDiff + lngDiff * lngDiff);
+};
+
+/**
+ * 🔧 IMPROVED: Extracts the most accurate city from coordinates
+ * Strategy:
+ * 1. Try BASE polygons first (no buffer) for precise matching
+ * 2. If no match, try expanded polygons (with buffer) for edge cases
+ * 3. If multiple matches in expanded polygons, pick closest by centroid distance
+ * 4. Return "Metro Manila" only as last resort (very rare)
+ */
 export const extractCityFromCoords = (coords: {
   lat: number;
   lng: number;
@@ -259,19 +286,62 @@ export const extractCityFromCoords = (coords: {
     return null;
   }
 
-  // Check which specific city the point is in (using expanded polygons)
-  for (const [city, polygon] of Object.entries(CITY_POLYGONS)) {
+  // STEP 1: Try BASE polygons first (most accurate, no buffer)
+  for (const [city, polygon] of Object.entries(BASE_CITY_POLYGONS)) {
     if (isPointInPolygon(point, polygon)) {
+      console.log(`✅ Exact match in ${city} (base polygon)`);
       return city;
     }
   }
 
+  // STEP 2: Point not in any base polygon, try expanded polygons (edge cases)
+  const matchingCities: Array<{ city: string; distance: number }> = [];
+
+  for (const [city, polygon] of Object.entries(CITY_POLYGONS)) {
+    if (isPointInPolygon(point, polygon)) {
+      const distance = getDistanceToPolygonCenter(
+        point,
+        BASE_CITY_POLYGONS[city],
+      );
+      matchingCities.push({ city, distance });
+    }
+  }
+
+  // STEP 3: If multiple matches, pick the closest city by centroid distance
+  if (matchingCities.length > 0) {
+    matchingCities.sort((a, b) => a.distance - b.distance);
+    const closestCity = matchingCities[0].city;
+
+    if (matchingCities.length > 1) {
+      console.log(
+        `⚠️ Multiple city matches (${matchingCities.map((m) => m.city).join(", ")}), ` +
+          `choosing closest: ${closestCity}`,
+      );
+    } else {
+      console.log(`✅ Match in ${closestCity} (expanded polygon, edge case)`);
+    }
+
+    return closestCity;
+  }
+
+  // STEP 4: Last resort - couldn't identify specific city (very rare)
+  console.log(
+    `⚠️ Could not identify specific city for coords (${coords.lat}, ${coords.lng}), returning "Metro Manila"`,
+  );
   return "Metro Manila";
 };
 
+/**
+ * 🔧 FIXED: Determines if driver services the pickup city
+ * Logic:
+ * 1. Driver explicitly serves this specific city → TRUE
+ * 2. Driver has "Metro Manila" (serves ALL cities) → TRUE
+ * 3. Pickup is "Metro Manila" (unknown city) → TRUE only if driver has "Metro Manila"
+ *    (This should be VERY RARE since extractCityFromCoords is now more accurate)
+ */
 export const isDriverServicingCity = (
   driverServiceAreas: string[],
-  pickupCity: string
+  pickupCity: string,
 ): boolean => {
   if (!driverServiceAreas || !pickupCity) return false;
 
@@ -281,12 +351,14 @@ export const isDriverServicingCity = (
   // Driver has "Metro Manila" catch-all (serves all cities)
   if (driverServiceAreas.includes("Metro Manila")) return true;
 
-  // Pickup city is "Metro Manila" (couldn't identify specific city)
-  // Match drivers who serve ANY Metro Manila city
+  // 🔧 FIXED: If pickup city is "Metro Manila" (couldn't identify specific city),
+  // ONLY match drivers who explicitly selected "Metro Manila"
+  // DO NOT match drivers with any individual city
+  // This ensures the rare case of unknown city only shows to drivers serving all of Metro Manila
   if (pickupCity === "Metro Manila") {
-    return driverServiceAreas.some((area) =>
-      METRO_MANILA_CITIES.includes(area)
-    );
+    // Driver must have "Metro Manila" in serviceAreas (already checked above, so this is redundant)
+    // If we reach here, driver doesn't have "Metro Manila", so return false
+    return false;
   }
 
   return false;

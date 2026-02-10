@@ -47,7 +47,7 @@ const userSchema = new Schema(
   { timestamps: true },
 );
 
-userSchema.index({ fullName: "text" });
+userSchema.index({ fullName: 1 });
 
 const UserModel = model("User", userSchema);
 export default UserModel;

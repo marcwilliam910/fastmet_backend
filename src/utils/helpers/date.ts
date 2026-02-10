@@ -14,3 +14,9 @@ export function isValidDate(dateString: string): boolean {
   const date = new Date(dateString);
   return !isNaN(date.getTime()) && date.toISOString() === dateString;
 }
+
+export const getLateBoundary = () => {
+  const now = new Date();
+  const lateThresholdMinutes = 30;
+  return new Date(now.getTime() - lateThresholdMinutes * 60 * 1000);
+};

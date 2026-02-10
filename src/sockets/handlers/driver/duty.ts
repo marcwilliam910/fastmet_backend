@@ -10,6 +10,7 @@ import {
   extractCityFromCoords,
   isDriverServicingCity,
 } from "../../../utils/helpers/locationHelpers";
+import { getLateBoundary } from "../../../utils/helpers/date";
 
 export const toggleOnDuty = (socket: CustomSocket) => {
   const on = withErrorHandling(socket);
@@ -53,7 +54,7 @@ export const toggleOnDuty = (socket: CustomSocket) => {
         console.log(
           `✅ Driver ${socket.data.userId} is ON DUTY at`,
           location,
-          `with vehicle: ${vehicleType}`
+          `with vehicle: ${vehicleType}`,
         );
 
         // Find driver's current active booking, if any
@@ -111,7 +112,7 @@ export const toggleOnDuty = (socket: CustomSocket) => {
         console.log(`❌ Driver ${socket.data.userId} is OFF DUTY`);
         socket.emit("dutyStatusChanged", { isOnDuty });
       }
-    }
+    },
   );
 };
 
@@ -176,6 +177,7 @@ export const updateDriverLocation = (socket: CustomSocket) => {
         "selectedVehicle.vehicleTypeId": driver.vehicle,
         "selectedVehicle.variantId": driver.vehicleVariant || null,
         requestedDrivers: { $nin: [driverId] },
+        "bookingType.value": { $gte: getLateBoundary() },
       })
         .sort({ "bookingType.value": 1 })
         .populate({
@@ -190,14 +192,14 @@ export const updateDriverLocation = (socket: CustomSocket) => {
     ]);
 
     console.log(
-      `🔍 Found ${asapBookings.length} ASAP bookings, ${scheduledBookings.length} scheduled bookings`
+      `🔍 Found ${asapBookings.length} ASAP bookings, ${scheduledBookings.length} scheduled bookings`,
     );
 
     // Filter ASAP bookings by proximity
     const nearbyAsapBookings = asapBookings.filter((booking: any) => {
       const distance = calculateDistance(
         { lat: booking.pickUp.coords.lat, lng: booking.pickUp.coords.lng },
-        { lat: location.lat, lng: location.lng }
+        { lat: location.lat, lng: location.lng },
       );
       return distance <= (booking.currentRadiusKm || 5);
     });
@@ -208,12 +210,12 @@ export const updateDriverLocation = (socket: CustomSocket) => {
         const pickupCity = extractCityFromCoords(booking.pickUp.coords);
         if (!pickupCity) return false;
         return isDriverServicingCity(driverServiceAreas, pickupCity);
-      }
+      },
     );
 
     console.log(
       `✅ ${nearbyAsapBookings.length} ASAP bookings within radius, ` +
-        `${eligibleScheduledBookings.length} scheduled bookings in service areas`
+        `${eligibleScheduledBookings.length} scheduled bookings in service areas`,
     );
 
     // Combine and format
@@ -229,7 +231,7 @@ export const updateDriverLocation = (socket: CustomSocket) => {
       const { customerId, selectedVehicle, ...rest } = booking;
       const distance = calculateDistance(
         { lat: booking.pickUp.coords.lat, lng: booking.pickUp.coords.lng },
-        { lat: location.lat, lng: location.lng }
+        { lat: location.lat, lng: location.lng },
       );
       return {
         ...rest,
@@ -248,7 +250,7 @@ export const updateDriverLocation = (socket: CustomSocket) => {
 
     console.log(
       `📦 Driver ${socket.data.userId} sees ${formattedBookings.length} total bookings ` +
-        `(${nearbyAsapBookings.length} ASAP + ${eligibleScheduledBookings.length} scheduled)`
+        `(${nearbyAsapBookings.length} ASAP + ${eligibleScheduledBookings.length} scheduled)`,
     );
 
     socket.emit("pendingBookingsUpdated", {
@@ -279,7 +281,7 @@ export const setDriverAvailable = (socket: CustomSocket) => {
           status: "completed",
           completedAt: new Date(),
         },
-        { new: true }
+        { new: true },
       );
 
       if (!updatedBooking) {
@@ -294,7 +296,7 @@ export const setDriverAvailable = (socket: CustomSocket) => {
         "Your package has been delivered successfully. Tap to view proof of delivery.",
         {
           type: "booking_completed",
-        }
+        },
       );
 
       const location = socket.data.location;
@@ -366,7 +368,7 @@ export const setDriverAvailable = (socket: CustomSocket) => {
       const nearbyAsapBookings = asapBookings.filter((booking: any) => {
         const distance = calculateDistance(
           { lat: booking.pickUp.coords.lat, lng: booking.pickUp.coords.lng },
-          { lat: location.lat, lng: location.lng }
+          { lat: location.lat, lng: location.lng },
         );
         return distance <= (booking.currentRadiusKm || 5);
       });
@@ -376,7 +378,7 @@ export const setDriverAvailable = (socket: CustomSocket) => {
           const pickupCity = extractCityFromCoords(booking.pickUp.coords);
           if (!pickupCity) return false;
           return isDriverServicingCity(driverServiceAreas, pickupCity);
-        }
+        },
       );
 
       const allEligibleBookings = [
@@ -388,7 +390,7 @@ export const setDriverAvailable = (socket: CustomSocket) => {
         const { customerId, selectedVehicle, ...rest } = booking;
         const distance = calculateDistance(
           { lat: booking.pickUp.coords.lat, lng: booking.pickUp.coords.lng },
-          { lat: location.lat, lng: location.lng }
+          { lat: location.lat, lng: location.lng },
         );
         return {
           ...rest,
@@ -407,12 +409,12 @@ export const setDriverAvailable = (socket: CustomSocket) => {
 
       console.log(
         `📦 Found ${formattedBookings.length} bookings for driver ${socket.data.userId} ` +
-          `(${nearbyAsapBookings.length} ASAP + ${eligibleScheduledBookings.length} scheduled)`
+          `(${nearbyAsapBookings.length} ASAP + ${eligibleScheduledBookings.length} scheduled)`,
       );
 
       socket.emit("pendingBookingsUpdated", {
         bookings: formattedBookings,
       });
-    }
+    },
   );
 };

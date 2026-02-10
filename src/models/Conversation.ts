@@ -43,5 +43,8 @@ ConversationSchema.index({ client: 1, "unreadCount.client": 1 });
 // 6. Driver unread count queries: driver + unreadCount.driver
 ConversationSchema.index({ driver: 1, "unreadCount.driver": 1 });
 
+// 7 for searching by name
+ConversationSchema.index({ client: 1, driver: 1 });
+
 const ConversationModel = mongoose.model("Conversation", ConversationSchema);
 export default ConversationModel;
