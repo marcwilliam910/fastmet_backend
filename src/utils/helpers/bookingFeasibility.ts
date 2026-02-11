@@ -1,9 +1,58 @@
 import BookingModel, { IBooking } from "../../models/Booking";
 
-const BUFFER_MINUTES = 15;
-const MIN_GAP_MINUTES = 20;
+export const BUFFER_MINUTES = 15;
+export const MIN_GAP_MINUTES = 20;
 
 type FeasibilityResult = { ok: true } | { ok: false; reason: string };
+
+export interface BookingTimeSlot {
+  startTime: Date | string;
+  durationMinutes: number;
+}
+
+export type ScheduleConflictResult = "none" | "overlap" | "gap_too_small";
+
+/**
+ * Checks whether two booking time slots conflict with each other.
+ * Returns "overlap" if they overlap, "gap_too_small" if they are on the
+ * same calendar day but the gap between them is less than MIN_GAP_MINUTES,
+ * or "none" if there is no conflict.
+ */
+export const checkScheduleConflict = (
+  slotA: BookingTimeSlot,
+  slotB: BookingTimeSlot,
+): ScheduleConflictResult => {
+  const aStart = new Date(slotA.startTime);
+  const aEnd = new Date(
+    aStart.getTime() + (slotA.durationMinutes + BUFFER_MINUTES) * 60 * 1000,
+  );
+  const bStart = new Date(slotB.startTime);
+  const bEnd = new Date(
+    bStart.getTime() + (slotB.durationMinutes + BUFFER_MINUTES) * 60 * 1000,
+  );
+
+  // Check for overlap (regardless of same date or not)
+  const hasOverlap = !(aEnd <= bStart || aStart >= bEnd);
+  if (hasOverlap) return "overlap";
+
+  // Only check gaps for same-day bookings
+  const isSameDate =
+    aStart.getFullYear() === bStart.getFullYear() &&
+    aStart.getMonth() === bStart.getMonth() &&
+    aStart.getDate() === bStart.getDate();
+
+  if (isSameDate) {
+    if (aEnd <= bStart) {
+      const gap = (bStart.getTime() - aEnd.getTime()) / 60000;
+      if (gap < MIN_GAP_MINUTES) return "gap_too_small";
+    } else if (bEnd <= aStart) {
+      const gap = (aStart.getTime() - bEnd.getTime()) / 60000;
+      if (gap < MIN_GAP_MINUTES) return "gap_too_small";
+    }
+  }
+
+  return "none";
+};
 
 export const canAcceptScheduledBooking = async (
   bookingId: string,
@@ -14,65 +63,31 @@ export const canAcceptScheduledBooking = async (
     return { ok: false, reason: "Booking not found." };
   }
 
-  const newStart = new Date(booking.bookingType.value);
-  const newEnd = new Date(
-    newStart.getTime() +
-      (booking.routeData.duration + BUFFER_MINUTES) * 60 * 1000,
-  );
+  const newSlot: BookingTimeSlot = {
+    startTime: booking.bookingType.value,
+    durationMinutes: booking.routeData.duration,
+  };
 
   for (const existing of existingBookings) {
-    const existingStart = new Date(existing.bookingType.value);
-    const existingEnd = new Date(
-      existingStart.getTime() +
-        (existing.routeData.duration + BUFFER_MINUTES) * 60 * 1000,
-    );
+    const existingSlot: BookingTimeSlot = {
+      startTime: existing.bookingType.value,
+      durationMinutes: existing.routeData.duration,
+    };
 
-    // Only check if the dates (year, month, day) are the same—i.e., same calendar day bookings
-    const isSameDate =
-      existingStart.getFullYear() === newStart.getFullYear() &&
-      existingStart.getMonth() === newStart.getMonth() &&
-      existingStart.getDate() === newStart.getDate();
+    const conflict = checkScheduleConflict(newSlot, existingSlot);
 
-    if (isSameDate) {
-      // Overlap check for same date
-      if (!(newEnd <= existingStart || newStart >= existingEnd)) {
-        return {
-          ok: false,
-          reason:
-            "This booking overlaps with another scheduled trip on the same day.",
-        };
-      }
-
-      // New booking ends before existing booking starts: Check gap
-      if (newEnd <= existingStart) {
-        const gap = (existingStart.getTime() - newEnd.getTime()) / 60000;
-        if (gap < MIN_GAP_MINUTES) {
-          return {
-            ok: false,
-            reason: "Not enough time to travel to the next scheduled pickup.",
-          };
-        }
-      }
-
-      // Existing booking ends before new booking starts: Check gap
-      if (existingEnd <= newStart) {
-        const gap = (newStart.getTime() - existingEnd.getTime()) / 60000;
-        if (gap < MIN_GAP_MINUTES) {
-          return {
-            ok: false,
-            reason: "Not enough time after the previous scheduled trip.",
-          };
-        }
-      }
-    } else {
-      // For different dates but back-to-back (e.g. midnight overlap) -- check if timespans overlap
-      if (!(newEnd <= existingStart || newStart >= existingEnd)) {
-        return {
-          ok: false,
-          reason: "This booking overlaps with another scheduled trip.",
-        };
-      }
-      // Otherwise, we don't check feasibility gap for bookings on separate days
+    if (conflict === "overlap") {
+      return {
+        ok: false,
+        reason: "This booking overlaps with another scheduled trip.",
+      };
+    }
+    if (conflict === "gap_too_small") {
+      return {
+        ok: false,
+        reason:
+          "Not enough time between this booking and another scheduled trip.",
+      };
     }
   }
 
@@ -95,67 +110,32 @@ export const canAcceptAsapBooking = async (
     };
   }
 
-  const newStart = new Date(booking.bookingType.value);
-  const newEnd = new Date(
-    newStart.getTime() +
-      (booking.routeData.duration + BUFFER_MINUTES) * 60 * 1000,
-  );
+  const newSlot: BookingTimeSlot = {
+    startTime: booking.bookingType.value,
+    durationMinutes: booking.routeData.duration,
+  };
 
   for (const scheduled of scheduledBookings) {
-    const scheduledStart = new Date(scheduled.bookingType.value);
-    const scheduledEnd = new Date(
-      scheduledStart.getTime() +
-        (scheduled.routeData.duration + BUFFER_MINUTES) * 60 * 1000,
-    );
+    const scheduledSlot: BookingTimeSlot = {
+      startTime: scheduled.bookingType.value,
+      durationMinutes: scheduled.routeData.duration,
+    };
 
-    // Check if on same calendar date
-    const isSameDate =
-      newStart.getFullYear() === scheduledStart.getFullYear() &&
-      newStart.getMonth() === scheduledStart.getMonth() &&
-      newStart.getDate() === scheduledStart.getDate();
+    const conflict = checkScheduleConflict(newSlot, scheduledSlot);
 
-    if (isSameDate) {
-      // 1️⃣ HARD overlap for same date
-      if (scheduledStart < newEnd && scheduledEnd > newStart) {
-        return {
-          ok: false,
-          reason:
-            "Cannot offer service for this ASAP booking because it conflicts with a scheduled booking on the same day.",
-        };
-      }
-
-      // 2️⃣ FEASIBILITY GAP for same day
-      // ASAP ends before scheduled starts
-      if (newEnd <= scheduledStart) {
-        const gap = (scheduledStart.getTime() - newEnd.getTime()) / 60000;
-        if (gap < MIN_GAP_MINUTES) {
-          return {
-            ok: false,
-            reason: "Not enough time to travel to the next scheduled pickup.",
-          };
-        }
-      }
-
-      // Scheduled ends before ASAP starts (almost impossible, but safe)
-      if (scheduledEnd <= newStart) {
-        const gap = (newStart.getTime() - scheduledEnd.getTime()) / 60000;
-        if (gap < MIN_GAP_MINUTES) {
-          return {
-            ok: false,
-            reason: "Not enough time after the previous scheduled trip.",
-          };
-        }
-      }
-    } else {
-      // If not the same standard day, check for any overlap (e.g., overnight/midnight bookings)
-      if (!(newEnd <= scheduledStart || newStart >= scheduledEnd)) {
-        return {
-          ok: false,
-          reason:
-            "Cannot offer service for this ASAP booking because it conflicts with a scheduled booking.",
-        };
-      }
-      // No feasibility gap check across different days
+    if (conflict === "overlap") {
+      return {
+        ok: false,
+        reason:
+          "Cannot offer service for this ASAP booking because it conflicts with a scheduled booking.",
+      };
+    }
+    if (conflict === "gap_too_small") {
+      return {
+        ok: false,
+        reason:
+          "Not enough time between this ASAP booking and a scheduled trip.",
+      };
     }
   }
 

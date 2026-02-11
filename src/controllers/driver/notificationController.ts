@@ -32,7 +32,7 @@ export const savePushToken = async (req: Request, res: Response) => {
       pushNotificationsEnabled: true,
       updatedAt: new Date(),
     },
-    { new: true }
+    { new: true },
   );
 
   console.log(`✅ Saved push token for driver ${driverId}`);
@@ -85,7 +85,7 @@ export const getNotificationSettings = async (req: Request, res: Response) => {
   }
 
   const driver = await DriverModel.findById(driverId).select(
-    "expoPushToken pushNotificationsEnabled"
+    "expoPushToken pushNotificationsEnabled",
   );
 
   if (!driver) {
@@ -220,7 +220,7 @@ export const markNotificationAsRead = async (req: Request, res: Response) => {
       ],
     },
     { isRead: true, readAt: new Date() },
-    { new: true }
+    { new: true },
   );
 
   if (!notification) {
@@ -236,7 +236,7 @@ export const markNotificationAsRead = async (req: Request, res: Response) => {
 
 export const markAllNotificationsAsRead = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   const driverId = getUserId(req);
 
@@ -247,7 +247,7 @@ export const markAllNotificationsAsRead = async (
   const query = getDriverNotificationQuery(driverId);
   const result = await NotificationModel.updateMany(
     { ...query, isRead: false },
-    { isRead: true, readAt: new Date() }
+    { isRead: true, readAt: new Date() },
   );
 
   res.json({
@@ -255,4 +255,13 @@ export const markAllNotificationsAsRead = async (
     message: "All notifications marked as read",
     data: { modifiedCount: result.modifiedCount },
   });
+};
+
+export const getNotificationById = async (req: Request, res: Response) => {
+  const notificationId = req.params.notificationId;
+  const notification = await NotificationModel.findById(notificationId);
+  if (!notification) {
+    return res.status(404).json({ error: "Notification not found" });
+  }
+  res.json(notification);
 };

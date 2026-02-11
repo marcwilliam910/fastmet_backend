@@ -35,12 +35,12 @@ export const startBookingExpiryWorker = (io: Server) => {
       await BookingModel.findByIdAndDelete(bookingId);
 
       // Create notification for client
-      await NotificationModel.create({
+      const notification = await NotificationModel.create({
         userId: booking.customerId,
         userType: "Client",
         title: "Booking Expired",
         message:
-          "10 minutes has passed but no drivers were available for your delivery request.",
+          "10 minutes has passed but no drivers were available for your delivery request. Please try booking again.",
         type: "booking_expired",
         data: {
           bookingId: booking._id,
@@ -49,10 +49,20 @@ export const startBookingExpiryWorker = (io: Server) => {
         },
       });
 
+      const unreadNotifications = await NotificationModel.countDocuments({
+        userId: booking.customerId,
+        userType: {
+          $in: ["Client", "All"],
+        },
+        isRead: false,
+      });
+
       // Notify the customer who created the booking
       io.to(booking.customerId.toString()).emit("bookingExpired", {
         message:
-          "10 minutes has passed but no drivers were available for your delivery request.",
+          "10 minutes has passed but no drivers were available for your delivery request. Please try booking again.",
+        notification,
+        unreadNotifications,
       });
 
       // Notify all drivers in the temporary room

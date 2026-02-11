@@ -311,13 +311,6 @@ export const requestAcceptance = (socket: CustomSocket, io: Server) => {
           distance: payload.distance,
         });
       } else if (payload.type === "schedule") {
-        io.to(clientUserId).emit("acceptanceRequestedSchedule", {
-          driverOffer: {
-            ...driverPayload,
-            bookingId,
-          },
-        });
-
         // Create notification + push for scheduled booking offer
         const notifMessage = `${
           payload.name
@@ -325,7 +318,7 @@ export const requestAcceptance = (socket: CustomSocket, io: Server) => {
           booking.pickUp?.name || "pickup"
         } to ${booking.dropOff?.name || "destination"}`;
 
-        await NotificationModel.create({
+        const notification = await NotificationModel.create({
           userId: clientUserId,
           userType: "Client",
           title: "New Driver Offer",
@@ -336,7 +329,16 @@ export const requestAcceptance = (socket: CustomSocket, io: Server) => {
             driverId,
             driverName: payload.name,
             driverRating: driver.rating.average,
+            driverProfilePicture: driver.profilePictureUrl,
           },
+        });
+
+        const unreadNotifications = await NotificationModel.countDocuments({
+          userId: booking.customerId,
+          userType: {
+            $in: ["Client", "All"],
+          },
+          isRead: false,
         });
 
         // Send push notification
@@ -349,6 +351,15 @@ export const requestAcceptance = (socket: CustomSocket, io: Server) => {
             type: "driver_offer",
           },
         );
+
+        io.to(clientUserId).emit("acceptanceRequestedSchedule", {
+          driverOffer: {
+            ...driverPayload,
+            bookingId,
+          },
+          unreadNotifications,
+          notification,
+        });
 
         console.log(
           `📩 Notification sent to client ${clientUserId} for driver offer`,

@@ -1,19 +1,19 @@
-import {Request, Response} from "express";
-import {getUserId} from "../../utils/helpers/getUserId";
+import { Request, Response } from "express";
+import { getUserId } from "../../utils/helpers/getUserId";
 import UserModel from "../../models/User";
 import NotificationModel from "../../models/Notification";
-import {expo, isValidPushToken} from "../../utils/pushNotifications";
+import { expo, isValidPushToken } from "../../utils/pushNotifications";
 
 export const savePushToken = async (req: Request, res: Response) => {
-  const {expoPushToken} = req.body;
+  const { expoPushToken } = req.body;
   const clientId = getUserId(req);
 
   if (!clientId) {
-    return res.status(401).json({error: "Unauthorized"});
+    return res.status(401).json({ error: "Unauthorized" });
   }
 
   if (!expoPushToken) {
-    return res.status(400).json({error: "Push token is required"});
+    return res.status(400).json({ error: "Push token is required" });
   }
 
   if (!isValidPushToken(expoPushToken)) {
@@ -30,7 +30,7 @@ export const savePushToken = async (req: Request, res: Response) => {
       pushNotificationsEnabled: true,
       updatedAt: new Date(),
     },
-    {new: true},
+    { new: true },
   );
 
   console.log(`✅ Saved push token for client ${clientId}`);
@@ -45,7 +45,7 @@ export const enableNotifications = async (req: Request, res: Response) => {
   const clientId = getUserId(req);
 
   if (!clientId) {
-    return res.status(401).json({error: "Unauthorized"});
+    return res.status(401).json({ error: "Unauthorized" });
   }
 
   await UserModel.findByIdAndUpdate(clientId, {
@@ -62,7 +62,7 @@ export const disableNotifications = async (req: Request, res: Response) => {
   const clientId = getUserId(req);
 
   if (!clientId) {
-    return res.status(401).json({error: "Unauthorized"});
+    return res.status(401).json({ error: "Unauthorized" });
   }
 
   await UserModel.findByIdAndUpdate(clientId, {
@@ -79,7 +79,7 @@ export const getNotificationSettings = async (req: Request, res: Response) => {
   const clientId = getUserId(req);
 
   if (!clientId) {
-    return res.status(401).json({error: "Unauthorized"});
+    return res.status(401).json({ error: "Unauthorized" });
   }
 
   const client = await UserModel.findById(clientId).select(
@@ -87,7 +87,7 @@ export const getNotificationSettings = async (req: Request, res: Response) => {
   );
 
   if (!client) {
-    return res.status(404).json({error: "Client not found"});
+    return res.status(404).json({ error: "Client not found" });
   }
 
   res.json({
@@ -103,17 +103,19 @@ export const testPushNotification = async (req: Request, res: Response) => {
   const clientId = getUserId(req);
 
   if (!clientId) {
-    return res.status(401).json({error: "Unauthorized"});
+    return res.status(401).json({ error: "Unauthorized" });
   }
 
   const client = await UserModel.findById(clientId);
 
   if (!client?.expoPushToken) {
-    return res.status(400).json({error: "No push token found for this client"});
+    return res
+      .status(400)
+      .json({ error: "No push token found for this client" });
   }
 
   if (!isValidPushToken(client.expoPushToken)) {
-    return res.status(400).json({error: "Invalid push token"});
+    return res.status(400).json({ error: "Invalid push token" });
   }
 
   const message = {
@@ -121,7 +123,7 @@ export const testPushNotification = async (req: Request, res: Response) => {
     sound: "default",
     title: "🧪 Test Notification",
     body: "This is a test push notification from your logistics app!",
-    data: {type: "test"},
+    data: { type: "test" },
   };
 
   const ticket = await expo.sendPushNotificationsAsync([message]);
@@ -135,8 +137,8 @@ export const testPushNotification = async (req: Request, res: Response) => {
 
 const getClientNotificationQuery = (clientId: string) => ({
   $or: [
-    {userId: clientId, userType: "Client"},
-    {isBroadcast: true, userType: {$in: ["Client", "All"]}},
+    { userId: clientId, userType: "Client" },
+    { isBroadcast: true, userType: { $in: ["Client", "All"] } },
   ],
 });
 
@@ -144,7 +146,7 @@ export const getNotifications = async (req: Request, res: Response) => {
   const clientId = getUserId(req);
 
   if (!clientId) {
-    return res.status(401).json({error: "Unauthorized"});
+    return res.status(401).json({ error: "Unauthorized" });
   }
 
   const page = parseInt(req.query.page as string) || 1;
@@ -155,7 +157,7 @@ export const getNotifications = async (req: Request, res: Response) => {
 
   const [notifications, totalCount] = await Promise.all([
     NotificationModel.find(query)
-      .sort({createdAt: -1})
+      .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit)
       .lean(),
@@ -184,7 +186,7 @@ export const getUnreadCount = async (req: Request, res: Response) => {
   const clientId = getUserId(req);
 
   if (!clientId) {
-    return res.status(401).json({error: "Unauthorized"});
+    return res.status(401).json({ error: "Unauthorized" });
   }
 
   const query = getClientNotificationQuery(clientId);
@@ -195,32 +197,32 @@ export const getUnreadCount = async (req: Request, res: Response) => {
 
   res.json({
     success: true,
-    data: {unreadCount},
+    data: { unreadCount },
   });
 };
 
 export const markNotificationAsRead = async (req: Request, res: Response) => {
   const clientId = getUserId(req);
-  const {notificationId} = req.params;
+  const { notificationId } = req.params;
 
   if (!clientId) {
-    return res.status(401).json({error: "Unauthorized"});
+    return res.status(401).json({ error: "Unauthorized" });
   }
 
   const notification = await NotificationModel.findOneAndUpdate(
     {
       _id: notificationId,
       $or: [
-        {userId: clientId},
-        {isBroadcast: true, userType: {$in: ["Client", "All"]}},
+        { userId: clientId },
+        { isBroadcast: true, userType: { $in: ["Client", "All"] } },
       ],
     },
-    {isRead: true, readAt: new Date()},
-    {new: true},
+    { isRead: true, readAt: new Date() },
+    { new: true },
   );
 
   if (!notification) {
-    return res.status(404).json({error: "Notification not found"});
+    return res.status(404).json({ error: "Notification not found" });
   }
 
   res.json({
@@ -237,18 +239,27 @@ export const markAllNotificationsAsRead = async (
   const clientId = getUserId(req);
 
   if (!clientId) {
-    return res.status(401).json({error: "Unauthorized"});
+    return res.status(401).json({ error: "Unauthorized" });
   }
 
   const query = getClientNotificationQuery(clientId);
   const result = await NotificationModel.updateMany(
-    {...query, isRead: false},
-    {isRead: true, readAt: new Date()},
+    { ...query, isRead: false },
+    { isRead: true, readAt: new Date() },
   );
 
   res.json({
     success: true,
     message: "All notifications marked as read",
-    data: {modifiedCount: result.modifiedCount},
+    data: { modifiedCount: result.modifiedCount },
   });
+};
+
+export const getNotificationById = async (req: Request, res: Response) => {
+  const notificationId = req.params.notificationId;
+  const notification = await NotificationModel.findById(notificationId);
+  if (!notification) {
+    return res.status(404).json({ error: "Notification not found" });
+  }
+  res.json(notification);
 };

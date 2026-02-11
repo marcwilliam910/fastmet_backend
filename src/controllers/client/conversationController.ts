@@ -101,3 +101,15 @@ export const getConversationByName: RequestHandler = async (req, res) => {
     conversations,
   });
 };
+
+export const getUnreadConversationsCount: RequestHandler = async (req, res) => {
+  const clientId = getUserId(req);
+  if (!clientId) {
+    return res.status(400).json({ message: "Missing ID" });
+  }
+  const unreadConversationsCount = await ConversationModel.countDocuments({
+    client: new mongoose.Types.ObjectId(clientId),
+    "unreadCount.client": { $gt: 0 },
+  });
+  res.status(200).json({ unreadConversationsCount });
+};

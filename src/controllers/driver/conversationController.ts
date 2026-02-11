@@ -137,3 +137,16 @@ export const getConversationByName: RequestHandler = async (req, res) => {
     conversations,
   });
 };
+
+export const getUnreadConversationsCount: RequestHandler = async (req, res) => {
+  const driverId = getUserId(req);
+  if (!driverId) {
+    return res.status(400).json({ message: "Missing ID" });
+  }
+  const unreadConversationsCount = await ConversationModel.countDocuments({
+    driver: new mongoose.Types.ObjectId(driverId),
+    "unreadCount.driver": { $gt: 0 },
+  });
+  console.log(unreadConversationsCount);
+  res.status(200).json({ unreadConversationsCount });
+};

@@ -59,7 +59,7 @@ export const getBookingsByStatus: RequestHandler = async (req, res) => {
     .sort(
       status === "cancelled"
         ? { cancelledAt: -1, _id: -1 }
-        : { createdAt: -1, _id: -1 }
+        : { createdAt: -1, _id: -1 },
     )
     .skip((pageNum - 1) * limitNum)
     .limit(limitNum)
@@ -94,7 +94,7 @@ export const getBookingsByStatus: RequestHandler = async (req, res) => {
     ]);
 
     completedMap = new Map(
-      completedCounts.map((d) => [d._id.toString(), d.total])
+      completedCounts.map((d) => [d._id.toString(), d.total]),
     );
   }
 
@@ -288,7 +288,7 @@ export const uploadBookingImage: RequestHandler = async (req, res) => {
     const images = await uploadMultipleImagesToCloudinary(
       files,
       `fastmet/clients/${getSecureFolderId(clientId)}/bookings/${bookingRef}`,
-      "booking" // Uses booking config: 1200px, 80% quality
+      "booking", // Uses booking config: 1200px, 80% quality
     );
 
     return res.json({
@@ -383,7 +383,7 @@ export const updatePartialBookingData: RequestHandler = async (req, res) => {
   const updatedBooking = await BookingModel.findOneAndUpdate(
     { _id: bookingId },
     { $set: updateData },
-    { new: true }
+    { new: true },
   );
 
   res.status(200).json(updatedBooking);
@@ -396,7 +396,8 @@ export const markBookingAsRead: RequestHandler = async (req, res) => {
     return res.status(400).json({ message: "Missing user ID" });
   }
 
-  const { status } = req.query as { status: "completed" | "cancelled" };
+  const { status } = req.params as { status: "completed" | "cancelled" };
+  console.log(status);
 
   if (!status || !["completed", "cancelled"].includes(status)) {
     return res.status(400).json({ message: "Invalid status" });
@@ -404,7 +405,7 @@ export const markBookingAsRead: RequestHandler = async (req, res) => {
 
   const result = await BookingModel.updateMany(
     { customerId: new mongoose.Types.ObjectId(clientId), status },
-    { clientRead: true }
+    { clientRead: true },
   );
 
   res.status(200).json({

@@ -11,6 +11,8 @@ import {
   isDriverServicingCity,
 } from "../../../utils/helpers/locationHelpers";
 import { getLateBoundary } from "../../../utils/helpers/date";
+import { RequestBooking } from "../../../types/booking";
+import { checkScheduleConflict } from "../../../utils/helpers/bookingFeasibility";
 
 export const toggleOnDuty = (socket: CustomSocket) => {
   const on = withErrorHandling(socket);
@@ -176,7 +178,7 @@ export const updateDriverLocation = (socket: CustomSocket) => {
         "bookingType.type": "schedule",
         "selectedVehicle.vehicleTypeId": driver.vehicle,
         "selectedVehicle.variantId": driver.vehicleVariant || null,
-        requestedDrivers: { $nin: [driverId] },
+        requestedDrivers: { $nin: [new mongoose.Types.ObjectId(driverId)] },
         "bookingType.value": { $gte: getLateBoundary() },
       })
         .sort({ "bookingType.value": 1 })
@@ -191,6 +193,13 @@ export const updateDriverLocation = (socket: CustomSocket) => {
         .lean(),
     ]);
 
+    const driverOfferedBookings = await BookingModel.find({
+      requestedDrivers: { $in: [new mongoose.Types.ObjectId(driverId)] },
+      status: "pending",
+      "bookingType.type": "schedule",
+      driverId: null,
+    }).lean();
+
     console.log(
       `🔍 Found ${asapBookings.length} ASAP bookings, ${scheduledBookings.length} scheduled bookings`,
     );
@@ -204,9 +213,24 @@ export const updateDriverLocation = (socket: CustomSocket) => {
       return distance <= (booking.currentRadiusKm || 5);
     });
 
-    // Filter scheduled bookings by service area
+    // Filter scheduled bookings by service area and driver offered bookings
     const eligibleScheduledBookings = scheduledBookings.filter(
       (booking: any) => {
+        for (const offeredBooking of driverOfferedBookings) {
+          const conflict = checkScheduleConflict(
+            {
+              startTime: booking.bookingType.value,
+              durationMinutes: booking.routeData.duration,
+            },
+            {
+              startTime: offeredBooking.bookingType.value,
+              durationMinutes: offeredBooking.routeData.duration,
+            },
+          );
+          if (conflict !== "none") return false;
+        }
+
+        // Check service area
         const pickupCity = extractCityFromCoords(booking.pickUp.coords);
         if (!pickupCity) return false;
         return isDriverServicingCity(driverServiceAreas, pickupCity);

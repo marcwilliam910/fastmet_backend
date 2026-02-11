@@ -94,7 +94,7 @@ export const requestAsapBooking = (socket: CustomSocket, io: Server) => {
       "expire",
       { bookingId: bookingIdStr },
       {
-        delay: 10 * 60 * 1000, // 10 minutes
+        delay: 1 * 60 * 1000, // 10 minutes
         jobId: `expiry-${bookingIdStr}`,
       },
     );
@@ -251,7 +251,7 @@ export const requestScheduleBooking = (socket: CustomSocket, io: Server) => {
   const on = withErrorHandling(socket);
 
   on("request_schedule_booking", async (data) => {
-    console.log("📨 Schedule booking request received:", data);
+    console.log("📨 Schedule booking request received:", data.bookingRef);
 
     // Early validation
     if (
@@ -320,7 +320,7 @@ export const requestScheduleBooking = (socket: CustomSocket, io: Server) => {
         profilePictureUrl: client.profilePictureUrl,
         phoneNumber: client.phoneNumber,
       },
-      bookingId: booking._id,
+      _id: booking._id,
       pickUp: booking.pickUp,
       dropOff: booking.dropOff,
       bookingType: {
@@ -592,6 +592,8 @@ export const pickDriver = (socket: CustomSocket, io: Server) => {
         payload.type === "asap"
           ? "bookingConfirmed"
           : "bookingConfirmedSchedule";
+      const notifyRejectedDrivers =
+        payload.type === "asap" ? "bookingTaken" : "bookingTakenSchedule";
 
       socket.emit(notifyCustomerSocket, { bookingId });
 
@@ -608,17 +610,16 @@ export const pickDriver = (socket: CustomSocket, io: Server) => {
       for (const requestedDriverId of booking.requestedDrivers || []) {
         const requestedDriverIdStr = requestedDriverId.toString();
 
+        let notification = null;
+        let unreadNotifications = 0;
         if (requestedDriverIdStr === driverId) {
-          // Accepted driver
-          io.to(requestedDriverIdStr).emit(notifyDriverAccepted, { bookingId });
-
           // Create notification + push for scheduled booking only
           if (payload.type === "schedule") {
             const notifMessage = `You have been selected for a scheduled delivery from ${
               booking.pickUp?.name || "pickup"
             } to ${booking.dropOff?.name || "destination"}`;
 
-            await NotificationModel.create({
+            notification = await NotificationModel.create({
               userId: driverId,
               userType: "Driver",
               title: "Scheduled Booking Confirmed",
@@ -633,6 +634,14 @@ export const pickDriver = (socket: CustomSocket, io: Server) => {
               },
             });
 
+            unreadNotifications = await NotificationModel.countDocuments({
+              userId: driverId,
+              userType: {
+                $in: ["Driver", "All"],
+              },
+              isRead: false,
+            });
+
             // Send push notification
             await sendNotifToDriver(
               driverId,
@@ -643,17 +652,21 @@ export const pickDriver = (socket: CustomSocket, io: Server) => {
 
             console.log(`📩 Notification created for driver ${driverId}`);
           }
-        } else {
-          // Rejected drivers
-          io.to(requestedDriverIdStr).emit("bookingTaken", { bookingId });
 
+          // Accepted driver
+          io.to(requestedDriverIdStr).emit(notifyDriverAccepted, {
+            bookingId,
+            notification,
+            unreadNotifications,
+          });
+        } else {
           // Create notification + push for rejected drivers (scheduled booking only)
           if (payload.type === "schedule") {
             const rejectedMessage = `Another driver was selected for the ${
               booking.pickUp?.name || "pickup"
             } to ${booking.dropOff?.name || "destination"} booking.`;
 
-            await NotificationModel.create({
+            notification = await NotificationModel.create({
               userId: requestedDriverIdStr,
               userType: "Driver",
               title: "Booking Taken",
@@ -662,6 +675,14 @@ export const pickDriver = (socket: CustomSocket, io: Server) => {
               data: {
                 bookingId: booking._id,
               },
+            });
+
+            unreadNotifications = await NotificationModel.countDocuments({
+              userId: requestedDriverIdStr,
+              userType: {
+                $in: ["Driver", "All"],
+              },
+              isRead: false,
             });
 
             // Send push notification
@@ -676,6 +697,13 @@ export const pickDriver = (socket: CustomSocket, io: Server) => {
               `📩 Notification created for rejected driver ${requestedDriverIdStr}`,
             );
           }
+
+          // Rejected drivers
+          io.to(requestedDriverIdStr).emit(notifyRejectedDrivers, {
+            bookingId,
+            notification,
+            unreadNotifications,
+          });
         }
       }
 

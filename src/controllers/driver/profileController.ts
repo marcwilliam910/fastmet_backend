@@ -13,7 +13,7 @@ import {
 export const isBlank = (v?: string | null) => !v || v.trim() === "";
 
 const parseAndValidateServiceAreas = (
-  serviceAreas: unknown
+  serviceAreas: unknown,
 ):
   | { ok: true; value: string[] }
   | { ok: false; error: "invalid_format" | "invalid_value" } => {
@@ -206,7 +206,7 @@ export const addDriverProfile: RequestHandler = async (req, res) => {
       variants: Array<{ _id: mongoose.Types.ObjectId; maxLoadKg: number }>;
     };
     const variant = vehicle.variants.find(
-      (v) => v._id.toString() === driver.vehicleVariant?.toString()
+      (v) => v._id.toString() === driver.vehicleVariant?.toString(),
     );
     vehicleVariantLoad = variant?.maxLoadKg ?? null;
   }
@@ -257,7 +257,7 @@ export const uploadMultipleDriverImages: RequestHandler = async (req, res) => {
       files,
       `fastmet/drivers/${getSecureFolderId(driverId)}/profile_images`,
       imageTypes,
-      "profile" // Uses profile config: 500px, 85% quality
+      "profile", // Uses profile config: 500px, 85% quality
     );
 
     // Convert array to object
@@ -276,7 +276,7 @@ export const uploadMultipleDriverImages: RequestHandler = async (req, res) => {
     await Driver.findByIdAndUpdate(
       driverId,
       { ...updateObject, registrationStep: step },
-      { new: true }
+      { new: true },
     );
 
     return res.json({
@@ -337,7 +337,7 @@ export const updateServiceAreas: RequestHandler = async (req, res) => {
 
   driver.serviceAreas = parsed.value;
 
-  await driver.save();
+  await driver.save({ validateModifiedOnly: true });
 
   return res.json({
     success: true,
@@ -392,7 +392,7 @@ export const updateDriverProfile: RequestHandler = async (req, res) => {
   if (shouldDelete) {
     if (driver.profilePictureUrl) {
       const publicId = `fastmet/drivers/${getSecureFolderId(
-        driverId
+        driverId,
       )}/profile_images/profile`;
       await deleteImageFromCloudinary(publicId);
     }
@@ -417,7 +417,7 @@ export const updateDriverProfile: RequestHandler = async (req, res) => {
   const updatedDriver = await DriverModel.findByIdAndUpdate(
     driverId,
     updateData,
-    { new: true }
+    { new: true },
   );
 
   if (!updatedDriver) {

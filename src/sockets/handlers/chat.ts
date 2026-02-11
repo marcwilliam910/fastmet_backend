@@ -19,7 +19,7 @@ export function chatHandler(socket: CustomSocket, io: Server) {
     socket.join(conversationId);
 
     console.log(
-      `${socket.data.userType} ${socket.data.userId} joined room: ${conversationId}`
+      `${socket.data.userType} ${socket.data.userId} joined room: ${conversationId}`,
     );
 
     await ConversationModel.findByIdAndUpdate(
@@ -29,7 +29,7 @@ export function chatHandler(socket: CustomSocket, io: Server) {
         client: clientId,
         driver: driverId,
       },
-      { upsert: true, new: true }
+      { upsert: true, new: true },
     );
 
     socket.emit("room_joined", {
@@ -79,7 +79,7 @@ export function chatHandler(socket: CustomSocket, io: Server) {
         imageUrl = await uploadBase64ImageToCloudinary(
           image,
           `fastmet/chats/${getSecureFolderId(senderId)}`,
-          "default" // Uses default config: 1200px, 80% quality
+          "default", // Uses default config: 1200px, 80% quality
         );
       } catch (error) {
         console.error("Image upload failed:", error);
@@ -141,22 +141,8 @@ export function chatHandler(socket: CustomSocket, io: Server) {
     });
 
     console.log(
-      `Message sent to conversation ${conversationId} and user ${receiverId}`
+      `Message sent to conversation ${conversationId} and user ${receiverId}`,
     );
-  });
-
-  // start up app
-  on("get_unread_conversations_count", async () => {
-    const userIdField =
-      socket.data.userType === "client"
-        ? socket.data.userId
-        : socket.data.userId;
-    const unreadConversationsCount = await ConversationModel.countDocuments({
-      [socket.data.userType]: userIdField,
-      [`unreadCount.${socket.data.userType}`]: { $gt: 0 },
-    });
-
-    socket.emit("unread_conversations_count", { unreadConversationsCount });
   });
 
   // LEAVE ROOM
@@ -172,7 +158,7 @@ export function chatHandler(socket: CustomSocket, io: Server) {
       {
         [updateField]: 0, // Reset unread count for the joining user
       },
-      { new: true }
+      { new: true },
     );
 
     // Get updated count after resetting
