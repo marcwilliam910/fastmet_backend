@@ -311,27 +311,62 @@ export const requestAcceptance = (socket: CustomSocket, io: Server) => {
           distance: payload.distance,
         });
       } else if (payload.type === "schedule") {
-        // Create notification + push for scheduled booking offer
-        const notifMessage = `${
-          payload.name
-        } has offered to handle your scheduled delivery from ${
-          booking.pickUp?.name || "pickup"
-        } to ${booking.dropOff?.name || "destination"}`;
-
-        const notification = await NotificationModel.create({
+        // Count existing drivers to generate dynamic message
+        const existingNotification = await NotificationModel.findOne({
           userId: clientUserId,
           userType: "Client",
-          title: "New Driver Offer",
-          message: notifMessage,
           type: "driver_offer",
-          data: {
-            bookingId: booking._id,
-            driverId,
-            driverName: payload.name,
-            driverRating: driver.rating.average,
-            driverProfilePicture: driver.profilePictureUrl,
-          },
+          "data.bookingId": booking._id,
         });
+
+        const existingDriverCount = existingNotification?.data?.drivers
+          ? Object.keys(existingNotification.data.drivers).length
+          : 0;
+
+        const totalDrivers = existingDriverCount + 1;
+        const notifMessage =
+          totalDrivers === 1
+            ? `${payload.name} has offered to handle your scheduled delivery`
+            : `${totalDrivers} drivers have offered to handle your scheduled delivery`;
+
+        const notification = await NotificationModel.findOneAndUpdate(
+          {
+            userId: clientUserId,
+            userType: "Client",
+            type: "driver_offer",
+            "data.bookingId": booking._id,
+          },
+          {
+            $set: {
+              [`data.drivers.${driverId}`]: {
+                driverName: payload.name,
+                driverRating: driver.rating.average,
+                driverProfilePicture: driver.profilePictureUrl,
+              },
+              message: notifMessage, // Update message dynamically
+              isRead: false,
+              updatedAt: new Date(),
+            },
+            $setOnInsert: {
+              userId: clientUserId,
+              userType: "Client",
+              title: "New Driver Offer",
+              type: "driver_offer",
+              "data.bookingId": booking._id,
+              "data.pickUp": {
+                name: booking.pickUp?.name,
+                coords: booking.pickUp?.coords,
+                address: booking.pickUp?.address,
+              },
+              "data.dropOff": {
+                name: booking.dropOff?.name,
+                coords: booking.dropOff?.coords,
+                address: booking.dropOff?.address,
+              },
+            },
+          },
+          { upsert: true, new: true },
+        );
 
         const unreadNotifications = await NotificationModel.countDocuments({
           userId: booking.customerId,

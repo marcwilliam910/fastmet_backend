@@ -47,5 +47,12 @@ const notificationSchema = new mongoose.Schema(
   },
 );
 
+notificationSchema.index({
+  userId: 1,
+  userType: 1,
+  type: 1,
+  "data.bookingId": 1,
+});
+
 const NotificationModel = mongoose.model("Notification", notificationSchema);
 export default NotificationModel;
