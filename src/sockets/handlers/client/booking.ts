@@ -791,3 +791,14 @@ export const cancelBooking = (socket: CustomSocket, io: Server) => {
     console.log(`✅ Booking ${bookingId} cancelled`);
   });
 };
+
+export const asapTimerEnd = (socket: CustomSocket, io: Server) => {
+  socket.on(
+    "asapTimerEnd",
+    (payload: { driverId: string; bookingId: string }) => {
+      io.to(payload.driverId).emit("timerEnd", {
+        bookingId: payload.bookingId,
+      });
+    },
+  );
+};

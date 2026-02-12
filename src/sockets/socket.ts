@@ -5,6 +5,7 @@ import {
   pickDriver,
   requestAsapBooking,
   requestScheduleBooking,
+  asapTimerEnd,
 } from "./handlers/client/booking";
 import {
   arrivedAtPickup,
@@ -81,7 +82,7 @@ export const initSocket = (server: any) => {
   io.on("connection", async (s) => {
     const socket = s as CustomSocket;
     console.log(
-      `New ${socket.data.userType} connected: ${socket.id} (User: ${socket.data.userId})`
+      `New ${socket.data.userType} connected: ${socket.id} (User: ${socket.data.userId})`,
     );
 
     // Join user's personal room (for targeted emissions)
@@ -109,6 +110,7 @@ export const initSocket = (server: any) => {
       getDriverLocation(socket, io);
       pickDriver(socket, io);
       cancelBooking(socket, io);
+      asapTimerEnd(socket, io);
     }
 
     socket.on("disconnect", () => {
