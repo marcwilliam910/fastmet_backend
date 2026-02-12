@@ -28,6 +28,7 @@ import vehicleRoute from "./routes/vehicleRoute";
 
 import { authenticateJWT } from "./middlewares/verifyToken";
 import { startBookingExpiryWorker } from "./workers/bookingExpiryWorker";
+import { startNotificationWorker } from "./workers/notificationWorker";
 import { startScheduledReminderWorker } from "./workers/scheduledReminderWorker";
 import { syncIndexes } from "./scripts/syncIndexes";
 
@@ -81,6 +82,7 @@ mongoose
       // ✅ Start BullMQ workers AFTER MongoDB is connected and server is listening
       const io = getIO();
       startBookingExpiryWorker(io);
+      startNotificationWorker();
       startScheduledReminderWorker();
       console.log("⏰ BullMQ workers initialized");
     });

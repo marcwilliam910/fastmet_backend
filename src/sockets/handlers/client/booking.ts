@@ -563,11 +563,11 @@ export const pickDriver = (socket: CustomSocket, io: Server) => {
       }
 
       /* ------------------------------------------------------------------ */
-      /* SCHEDULE DRIVER REMINDER - 1 hour before pickup (BullMQ)           */
+      /* SCHEDULE DRIVER REMINDER - 3 hours before pickup (BullMQ)           */
       /* ------------------------------------------------------------------ */
       if (payload.type === "schedule") {
         const pickupTime = new Date(booking.bookingType.value).getTime();
-        const reminderTime = pickupTime - 60 * 60 * 1000; // 1 hour before
+        const reminderTime = pickupTime - 3 * 60 * 60 * 1000; // 3 hours before
         const delay = Math.max(0, reminderTime - Date.now());
 
         await scheduledReminderQueue.add(

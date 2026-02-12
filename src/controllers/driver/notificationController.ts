@@ -3,8 +3,7 @@ import { Expo } from "expo-server-sdk";
 import DriverModel from "../../models/Driver";
 import NotificationModel from "../../models/Notification";
 import { getUserId } from "../../utils/helpers/getUserId";
-
-const expo = new Expo();
+import { sendNotifToDriver } from "../../utils/pushNotifications";
 
 export const savePushToken = async (req: Request, res: Response) => {
   const { expoPushToken } = req.body;
@@ -120,20 +119,17 @@ export const testPushNotification = async (req: Request, res: Response) => {
     return res.status(400).json({ error: "Invalid push token" });
   }
 
-  const message = {
-    to: driver.expoPushToken,
-    sound: "default",
-    title: "Hi Boss",
-    body: "baka pwede makautang bossing kahit 1500 lang",
-    data: { type: "test" },
-  };
-
-  const ticket = await expo.sendPushNotificationsAsync([message]);
+  const queued = await sendNotifToDriver(
+    String(driverId),
+    "Hi Boss",
+    "baka pwede makautang bossing kahit 1500 lang",
+    { type: "test" },
+  );
 
   res.json({
     success: true,
-    message: "Test notification sent",
-    ticket,
+    message: "Test notification queued",
+    queued,
   });
 };
 

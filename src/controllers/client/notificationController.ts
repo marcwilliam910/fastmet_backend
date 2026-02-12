@@ -2,7 +2,10 @@ import { Request, Response } from "express";
 import { getUserId } from "../../utils/helpers/getUserId";
 import UserModel from "../../models/User";
 import NotificationModel from "../../models/Notification";
-import { expo, isValidPushToken } from "../../utils/pushNotifications";
+import {
+  isValidPushToken,
+  sendNotifToClient,
+} from "../../utils/pushNotifications";
 
 export const savePushToken = async (req: Request, res: Response) => {
   const { expoPushToken } = req.body;
@@ -118,20 +121,17 @@ export const testPushNotification = async (req: Request, res: Response) => {
     return res.status(400).json({ error: "Invalid push token" });
   }
 
-  const message = {
-    to: client.expoPushToken,
-    sound: "default",
-    title: "🧪 Test Notification",
-    body: "This is a test push notification from your logistics app!",
-    data: { type: "test" },
-  };
-
-  const ticket = await expo.sendPushNotificationsAsync([message]);
+  const queued = await sendNotifToClient(
+    clientId,
+    "🧪 Test Notification",
+    "This is a test push notification from your logistics app!",
+    { type: "test" },
+  );
 
   res.json({
     success: true,
-    message: "Test notification sent",
-    ticket,
+    message: "Test notification queued",
+    queued,
   });
 };
 

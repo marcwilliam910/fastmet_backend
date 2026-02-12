@@ -10,12 +10,25 @@ export const bookingExpiryQueue = new Queue("bookingExpiry", {
   },
 });
 
-// Queue for scheduled booking driver reminders (1 hour before pickup)
+// Queue for scheduled booking driver reminders (3 hour before pickup)
 export const scheduledReminderQueue = new Queue("scheduledReminder", {
   connection: redisConnection,
   defaultJobOptions: {
     removeOnComplete: true,
     removeOnFail: 100,
+  },
+});
+
+export const notificationQueue = new Queue("notification", {
+  connection: redisConnection,
+  defaultJobOptions: {
+    removeOnComplete: true,
+    removeOnFail: 100,
+    attempts: 3,
+    backoff: {
+      type: "exponential",
+      delay: 3000,
+    },
   },
 });
 
