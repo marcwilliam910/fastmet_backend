@@ -58,8 +58,8 @@ export interface IBooking extends Document {
   searchStep: number;
   currentRadiusKm: number;
   // driver notif scheduled booking
-  notificationSent: boolean;
-  notifiedAt: Date | null;
+  // notificationSent: boolean;
+  // notifiedAt: Date | null;
 }
 
 const bookingSchema: Schema = new Schema<IBooking>(
@@ -137,14 +137,14 @@ const bookingSchema: Schema = new Schema<IBooking>(
       ],
     },
     completedAt: { type: Date, default: null },
-    notificationSent: {
-      type: Boolean,
-      default: false,
-    },
-    notifiedAt: {
-      type: Date,
-      default: null,
-    },
+    // notificationSent: {
+    //   type: Boolean,
+    //   default: false,
+    // },
+    // notifiedAt: {
+    //   type: Date,
+    //   default: null,
+    // },
     bookingImages: {
       type: {
         pickup: {

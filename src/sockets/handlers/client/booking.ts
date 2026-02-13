@@ -16,7 +16,18 @@ import {
 } from "../../../utils/helpers/locationHelpers";
 import { VehicleType } from "../../../models/Vehicle";
 import { isValidDate } from "../../../utils/helpers/date";
-import { bookingExpiryQueue, scheduledReminderQueue } from "../../../queues";
+import {
+  bookingExpiryQueue,
+  // scheduledReminderQueue,
+} from "../../../queues";
+import {
+  removeDriverCheckInJobs,
+  scheduleDriverCheckInJobs,
+} from "../../../workers/scheduledBookingCheckDriverWorker";
+import {
+  removeClientCheckInJobs,
+  scheduleClientCheckInJobs,
+} from "../../../workers/scheduledBookingCheckClientWorker";
 
 export const requestAsapBooking = (socket: CustomSocket, io: Server) => {
   const on = withErrorHandling(socket);
@@ -94,7 +105,7 @@ export const requestAsapBooking = (socket: CustomSocket, io: Server) => {
       "expire",
       { bookingId: bookingIdStr },
       {
-        delay: 1 * 60 * 1000, // 10 minutes
+        delay: 10 * 60 * 1000, // 10 minutes
         jobId: `expiry-${bookingIdStr}`,
       },
     );
@@ -145,11 +156,13 @@ export const requestAsapBooking = (socket: CustomSocket, io: Server) => {
         attempt: freshBooking.searchStep,
       });
 
-      const availableDriverSockets = await io
-        .in(SOCKET_ROOMS.ON_DUTY)
-        .in(SOCKET_ROOMS.AVAILABLE)
-        .in(vehicleRoom)
-        .fetchSockets();
+      const vehicleSockets = await io.in(vehicleRoom).fetchSockets();
+
+      const availableDriverSockets = vehicleSockets.filter(
+        (s) =>
+          s.rooms.has(SOCKET_ROOMS.ON_DUTY) &&
+          s.rooms.has(SOCKET_ROOMS.AVAILABLE),
+      );
 
       // Use a Map to deduplicate drivers (handles multiple sockets per driver)
       const newDriverMap = new Map<
@@ -368,11 +381,13 @@ export const requestScheduleBooking = (socket: CustomSocket, io: Server) => {
     const vehicleRoom = `VEHICLE_${vehicleType.toUpperCase()}`;
 
     // 6. Get available & on-duty drivers with matching vehicle type
-    const availableDriverSockets = await io
-      .in(SOCKET_ROOMS.ON_DUTY)
-      .in(SOCKET_ROOMS.AVAILABLE)
-      .in(vehicleRoom)
-      .fetchSockets();
+    const vehicleSockets = await io.in(vehicleRoom).fetchSockets();
+
+    const availableDriverSockets = vehicleSockets.filter(
+      (s) =>
+        s.rooms.has(SOCKET_ROOMS.ON_DUTY) &&
+        s.rooms.has(SOCKET_ROOMS.AVAILABLE),
+    );
 
     console.log(
       `🔍 Found ${availableDriverSockets.length} available ${vehicleType} drivers`,
@@ -444,6 +459,12 @@ export const requestScheduleBooking = (socket: CustomSocket, io: Server) => {
 
     console.log(
       `📤 Scheduled booking ${booking._id} sent to ${eligibleDrivers.length} drivers in ${pickupCity}`,
+    );
+
+    // Schedule client check-in notifications
+    await scheduleClientCheckInJobs(
+      String(booking._id),
+      booking.bookingType.value as Date,
     );
   });
 };
@@ -563,23 +584,15 @@ export const pickDriver = (socket: CustomSocket, io: Server) => {
       }
 
       /* ------------------------------------------------------------------ */
-      /* SCHEDULE DRIVER REMINDER - 3 hours before pickup (BullMQ)           */
+      /* REMOVE SCHEDULED CHECK JOBS - Driver was chosen manually AND add driver check-in jobs           */
       /* ------------------------------------------------------------------ */
       if (payload.type === "schedule") {
-        const pickupTime = new Date(booking.bookingType.value).getTime();
-        const reminderTime = pickupTime - 3 * 60 * 60 * 1000; // 3 hours before
-        const delay = Math.max(0, reminderTime - Date.now());
+        await removeClientCheckInJobs(bookingId);
 
-        await scheduledReminderQueue.add(
-          "remind",
-          { bookingId, driverId },
-          {
-            delay,
-            jobId: `reminder-${bookingId}`,
-          },
-        );
-        console.log(
-          `🔔 Scheduled driver reminder for booking ${bookingId} (fires in ${Math.round(delay / 60000)} minutes)`,
+        await scheduleDriverCheckInJobs(
+          bookingId,
+          booking.bookingType.value as Date,
+          driverId,
         );
       }
 
@@ -771,6 +784,12 @@ export const cancelBooking = (socket: CustomSocket, io: Server) => {
       console.log(`Could not remove expiry job for ${bookingId}:`, err);
     }
 
+    /* ------------------------------------------------------------------ */
+    /* REMOVE SCHEDULED CHECK JOBS - Booking cancelled                    */
+    /* ------------------------------------------------------------------ */
+    await removeClientCheckInJobs(bookingId);
+    if (booking.driverId)
+      await removeDriverCheckInJobs(bookingId, booking.driverId.toString());
     /* ------------------------------------------------------------------ */
     /* Notify customer and drivers                                        */
     /* ------------------------------------------------------------------ */

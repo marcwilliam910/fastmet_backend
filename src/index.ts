@@ -5,6 +5,7 @@ import dotenv from "dotenv";
 dotenv.config();
 
 import mongoose from "mongoose";
+import { seedNotifications } from "./migrate";
 import { errorHandler } from "./middlewares/errorHandler";
 import { getIO, initSocket } from "./sockets/socket";
 // client routes
@@ -29,7 +30,8 @@ import vehicleRoute from "./routes/vehicleRoute";
 import { authenticateJWT } from "./middlewares/verifyToken";
 import { startBookingExpiryWorker } from "./workers/bookingExpiryWorker";
 import { startNotificationWorker } from "./workers/notificationWorker";
-import { startScheduledReminderWorker } from "./workers/scheduledReminderWorker";
+// import { startScheduledReminderWorker } from "./workers/scheduledReminderWorker";
+import { startScheduledBookingCheckClientWorker } from "./workers/scheduledBookingCheckClientWorker";
 import { syncIndexes } from "./scripts/syncIndexes";
 
 const app = express();
@@ -74,6 +76,7 @@ mongoose
     console.log("MongoDB connected");
 
     // await syncIndexes();
+    // await seedNotifications();
     // console.log("Indexes synchronized");
 
     server.listen(PORT, () => {
@@ -83,7 +86,8 @@ mongoose
       const io = getIO();
       startBookingExpiryWorker(io);
       startNotificationWorker();
-      startScheduledReminderWorker();
+      // startScheduledReminderWorker();
+      startScheduledBookingCheckClientWorker(io);
       console.log("⏰ BullMQ workers initialized");
     });
   })

@@ -118,15 +118,6 @@ export const initSocket = (server: any) => {
     });
   });
 
-  // ✅ Log stats periodically
-  // setInterval(async () => {
-  //   const onDutySockets = await io.in(SOCKET_ROOMS.ON_DUTY).fetchSockets();
-  //   const availableSockets = await io.in(SOCKET_ROOMS.AVAILABLE).fetchSockets();
-
-  //   console.log(`📊 On-duty drivers: ${onDutySockets.length}`);
-  //   console.log(`📊 Available drivers: ${availableSockets.length}`);
-  // }, 30000); // Every 30 seconds
-
   return io;
 };
 

@@ -12,43 +12,45 @@ export interface BookingTimeSlot {
 
 export type ScheduleConflictResult = "none" | "overlap" | "gap_too_small";
 
-/**
- * Checks whether two booking time slots conflict with each other.
- * Returns "overlap" if they overlap, "gap_too_small" if they are on the
- * same calendar day but the gap between them is less than MIN_GAP_MINUTES,
- * or "none" if there is no conflict.
- */
 export const checkScheduleConflict = (
   slotA: BookingTimeSlot,
   slotB: BookingTimeSlot,
 ): ScheduleConflictResult => {
   const aStart = new Date(slotA.startTime);
+  const bStart = new Date(slotB.startTime);
+
+  if (isNaN(aStart.getTime()) || isNaN(bStart.getTime())) {
+    throw new Error("Invalid startTime provided to checkScheduleConflict");
+  }
+
   const aEnd = new Date(
     aStart.getTime() + (slotA.durationMinutes + BUFFER_MINUTES) * 60 * 1000,
   );
-  const bStart = new Date(slotB.startTime);
+
   const bEnd = new Date(
     bStart.getTime() + (slotB.durationMinutes + BUFFER_MINUTES) * 60 * 1000,
   );
 
-  // Check for overlap (regardless of same date or not)
-  const hasOverlap = !(aEnd <= bStart || aStart >= bEnd);
-  if (hasOverlap) return "overlap";
+  const aStartMs = aStart.getTime();
+  const aEndMs = aEnd.getTime();
+  const bStartMs = bStart.getTime();
+  const bEndMs = bEnd.getTime();
 
-  // Only check gaps for same-day bookings
-  const isSameDate =
-    aStart.getFullYear() === bStart.getFullYear() &&
-    aStart.getMonth() === bStart.getMonth() &&
-    aStart.getDate() === bStart.getDate();
+  // 1️⃣ Hard overlap check (true time intersection)
+  const overlaps = aStartMs < bEndMs && aEndMs > bStartMs;
+  if (overlaps) return "overlap";
 
-  if (isSameDate) {
-    if (aEnd <= bStart) {
-      const gap = (bStart.getTime() - aEnd.getTime()) / 60000;
-      if (gap < MIN_GAP_MINUTES) return "gap_too_small";
-    } else if (bEnd <= aStart) {
-      const gap = (aStart.getTime() - bEnd.getTime()) / 60000;
-      if (gap < MIN_GAP_MINUTES) return "gap_too_small";
-    }
+  // 2️⃣ Gap check (absolute time, no calendar dependency)
+  let gapMinutes = 0;
+
+  if (aEndMs <= bStartMs) {
+    gapMinutes = (bStartMs - aEndMs) / 60000;
+  } else if (bEndMs <= aStartMs) {
+    gapMinutes = (aStartMs - bEndMs) / 60000;
+  }
+
+  if (gapMinutes > 0 && gapMinutes < MIN_GAP_MINUTES) {
+    return "gap_too_small";
   }
 
   return "none";
@@ -111,11 +113,13 @@ export const canAcceptAsapBooking = async (
   }
 
   const newSlot: BookingTimeSlot = {
-    startTime: booking.bookingType.value,
+    startTime: new Date(),
     durationMinutes: booking.routeData.duration,
   };
 
   for (const scheduled of scheduledBookings) {
+    if (!scheduled.bookingType?.value) continue;
+
     const scheduledSlot: BookingTimeSlot = {
       startTime: scheduled.bookingType.value,
       durationMinutes: scheduled.routeData.duration,

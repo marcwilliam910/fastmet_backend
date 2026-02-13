@@ -157,7 +157,7 @@ export const getNotifications = async (req: Request, res: Response) => {
 
   const [notifications, totalCount] = await Promise.all([
     NotificationModel.find(query)
-      .sort({ updatedAt: -1 })
+      .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit)
       .lean(),
