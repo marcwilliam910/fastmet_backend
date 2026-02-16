@@ -6,7 +6,6 @@ import { SOCKET_ROOMS } from "../../../utils/constants";
 import mongoose from "mongoose";
 import { sendNotifToClient } from "../../../utils/pushNotifications";
 import DriverModel from "../../../models/Driver";
-import { isDriverServicingCity } from "../../../utils/helpers/locationHelpers";
 import { getLateBoundary } from "../../../utils/helpers/date";
 import { checkScheduleConflict } from "../../../utils/helpers/bookingFeasibility";
 
@@ -150,8 +149,18 @@ export const updateDriverLocation = (socket: CustomSocket) => {
       return;
     }
 
+    // Build the city filter based on driver's service areas
+    let cityFilter;
+
+    if (driverServiceAreas.includes("Metro Manila")) {
+      // Driver serves all cities - match ANY booking
+      cityFilter = {}; // No filter needed
+    } else {
+      // Driver only serves specific cities - match ONLY those cities (not "Metro Manila" unknown)
+      cityFilter = { "pickUp.city": { $in: driverServiceAreas } };
+    }
+
     // Fetch ASAP and scheduled bookings in parallel
-    // Filter by vehicleTypeId AND variantId (variantId can be null for vehicles without variants)
     const [asapBookings, scheduledBookings] = await Promise.all([
       BookingModel.find({
         status: "searching",
@@ -176,6 +185,7 @@ export const updateDriverLocation = (socket: CustomSocket) => {
         "selectedVehicle.variantId": driver.vehicleVariant || null,
         requestedDrivers: { $nin: [new mongoose.Types.ObjectId(driverId)] },
         "bookingType.value": { $gte: getLateBoundary() },
+        ...cityFilter, // 🆕 Apply city filter here
       })
         .sort({ "bookingType.value": 1 })
         .populate({
@@ -227,13 +237,7 @@ export const updateDriverLocation = (socket: CustomSocket) => {
           if (conflict !== "none") return false;
         }
 
-        const pickupCity = booking.pickUp.city;
-        if (!pickupCity) {
-          console.warn(`⚠️ Booking ${booking._id} missing city, skipping`);
-          return false;
-        }
-
-        return isDriverServicingCity(driverServiceAreas, pickupCity);
+        return true;
       },
     );
 
@@ -351,8 +355,18 @@ export const setDriverAvailable = (socket: CustomSocket) => {
         return;
       }
 
+      // Build the city filter based on driver's service areas
+      let cityFilter;
+
+      if (driverServiceAreas.includes("Metro Manila")) {
+        // Driver serves all cities - match ANY booking
+        cityFilter = {}; // No filter needed
+      } else {
+        // Driver only serves specific cities - match ONLY those cities (not "Metro Manila" unknown)
+        cityFilter = { "pickUp.city": { $in: driverServiceAreas } };
+      }
+
       // Fetch eligible bookings in parallel
-      // Filter by vehicleTypeId AND variantId (variantId can be null for vehicles without variants)
       const [asapBookings, scheduledBookings] = await Promise.all([
         BookingModel.find({
           status: "searching",
@@ -375,6 +389,9 @@ export const setDriverAvailable = (socket: CustomSocket) => {
           "bookingType.type": "schedule",
           "selectedVehicle.vehicleTypeId": driver.vehicle,
           "selectedVehicle.variantId": driver.vehicleVariant || null,
+          requestedDrivers: { $nin: [new mongoose.Types.ObjectId(driverId)] },
+          "bookingType.value": { $gte: getLateBoundary() },
+          ...cityFilter, // 🆕 Apply city filter here
         })
           .sort({ "bookingType.value": 1 })
           .populate({
@@ -388,6 +405,13 @@ export const setDriverAvailable = (socket: CustomSocket) => {
           .lean(),
       ]);
 
+      const driverOfferedBookings = await BookingModel.find({
+        requestedDrivers: { $in: [new mongoose.Types.ObjectId(driverId)] },
+        status: "pending",
+        "bookingType.type": "schedule",
+        driverId: null,
+      }).lean();
+
       // Filter (same logic as before)
       const nearbyAsapBookings = asapBookings.filter((booking: any) => {
         const distance = calculateDistance(
@@ -397,16 +421,25 @@ export const setDriverAvailable = (socket: CustomSocket) => {
         return distance <= (booking.currentRadiusKm || 5);
       });
 
+      // Around line where you filter scheduled bookings
       const eligibleScheduledBookings = scheduledBookings.filter(
         (booking: any) => {
-          // 🆕 Use pre-stored city instead of calculating
-          const pickupCity = booking.pickUp.city; // ← Read from DB
-
-          if (!pickupCity) {
-            console.warn(`⚠️ Booking ${booking._id} missing city, skipping`);
-            return false;
+          // Check schedule conflicts
+          for (const offeredBooking of driverOfferedBookings) {
+            const conflict = checkScheduleConflict(
+              {
+                startTime: booking.bookingType.value,
+                durationMinutes: booking.routeData.duration,
+              },
+              {
+                startTime: offeredBooking.bookingType.value,
+                durationMinutes: offeredBooking.routeData.duration,
+              },
+            );
+            if (conflict !== "none") return false;
           }
-          return isDriverServicingCity(driverServiceAreas, pickupCity);
+
+          return true;
         },
       );
 

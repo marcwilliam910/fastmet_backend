@@ -323,35 +323,35 @@ export const extractCityFromCoords = (coords: {
   return "Metro Manila";
 };
 
-/**
- * 🔧 FIXED: Determines if driver services the pickup city
- * Logic:
- * 1. Driver explicitly serves this specific city → TRUE
- * 2. Driver has "Metro Manila" (serves ALL cities) → TRUE
- * 3. Pickup is "Metro Manila" (unknown city) → TRUE only if driver has "Metro Manila"
- *    (This should be VERY RARE since extractCityFromCoords is now more accurate)
- */
-export const isDriverServicingCity = (
-  driverServiceAreas: string[],
-  pickupCity: string,
-): boolean => {
-  if (!driverServiceAreas || !pickupCity) return false;
+// /**
+//  * 🔧 FIXED: Determines if driver services the pickup city
+//  * Logic:
+//  * 1. Driver explicitly serves this specific city → TRUE
+//  * 2. Driver has "Metro Manila" (serves ALL cities) → TRUE
+//  * 3. Pickup is "Metro Manila" (unknown city) → TRUE only if driver has "Metro Manila"
+//  *    (This should be VERY RARE since extractCityFromCoords is now more accurate)
+//  */
+// export const isDriverServicingCity = (
+//   driverServiceAreas: string[],
+//   pickupCity: string,
+// ): boolean => {
+//   if (!driverServiceAreas || !pickupCity) return false;
 
-  // Driver serves this specific city
-  if (driverServiceAreas.includes(pickupCity)) return true;
+//   // Driver serves this specific city
+//   if (driverServiceAreas.includes(pickupCity)) return true;
 
-  // Driver has "Metro Manila" catch-all (serves all cities)
-  if (driverServiceAreas.includes("Metro Manila")) return true;
+//   // Driver has "Metro Manila" catch-all (serves all cities)
+//   if (driverServiceAreas.includes("Metro Manila")) return true;
 
-  // 🔧 FIXED: If pickup city is "Metro Manila" (couldn't identify specific city),
-  // ONLY match drivers who explicitly selected "Metro Manila"
-  // DO NOT match drivers with any individual city
-  // This ensures the rare case of unknown city only shows to drivers serving all of Metro Manila
-  if (pickupCity === "Metro Manila") {
-    // Driver must have "Metro Manila" in serviceAreas (already checked above, so this is redundant)
-    // If we reach here, driver doesn't have "Metro Manila", so return false
-    return false;
-  }
+//   // 🔧 FIXED: If pickup city is "Metro Manila" (couldn't identify specific city),
+//   // ONLY match drivers who explicitly selected "Metro Manila"
+//   // DO NOT match drivers with any individual city
+//   // This ensures the rare case of unknown city only shows to drivers serving all of Metro Manila
+//   if (pickupCity === "Metro Manila") {
+//     // Driver must have "Metro Manila" in serviceAreas (already checked above, so this is redundant)
+//     // If we reach here, driver doesn't have "Metro Manila", so return false
+//     return false;
+//   }
 
-  return false;
-};
+//   return false;
+// };

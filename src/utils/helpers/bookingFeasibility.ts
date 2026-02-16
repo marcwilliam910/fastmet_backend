@@ -38,7 +38,10 @@ export const checkScheduleConflict = (
 
   // 1️⃣ Hard overlap check (true time intersection)
   const overlaps = aStartMs < bEndMs && aEndMs > bStartMs;
-  if (overlaps) return "overlap";
+  if (overlaps) {
+    console.log("Overlaps: ", overlaps);
+    return "overlap";
+  }
 
   // 2️⃣ Gap check (absolute time, no calendar dependency)
   let gapMinutes = 0;
@@ -50,6 +53,7 @@ export const checkScheduleConflict = (
   }
 
   if (gapMinutes > 0 && gapMinutes < MIN_GAP_MINUTES) {
+    console.log("Gap too small: ", gapMinutes);
     return "gap_too_small";
   }
 
