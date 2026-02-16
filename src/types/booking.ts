@@ -1,4 +1,4 @@
-import {ILoadVariant, ISearchConfig} from "../models/Vehicle";
+import { ILoadVariant, ISearchConfig } from "../models/Vehicle";
 
 export type RequestBooking = {
   customerId: string;
@@ -8,7 +8,8 @@ export type RequestBooking = {
   bookingType: {
     type: "asap" | "pooling" | "schedule";
     value: string;
-  };   selectedVehicle: {
+  };
+  selectedVehicle: {
     _id: string;
     key: string;
     variant: ILoadVariant | null;
@@ -29,13 +30,13 @@ export type RouteData = {
   distanceFee: number;
   serviceFee: number;
   totalPrice: number;
-}; 
-
+};
 
 export type LocationDetails = {
   name: string;
   address: string;
-  coords: {lat: number; lng: number};
+  city?: string;
+  coords: { lat: number; lng: number };
   additionalDetails?: string;
 };
 

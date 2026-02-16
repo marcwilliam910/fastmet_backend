@@ -1,6 +1,5 @@
 import { Schema, Document, model } from "mongoose";
 import { LocationDetails, Service } from "../types/booking";
-import { ILoadVariant } from "./Vehicle";
 
 export interface IBooking extends Document {
   customerId: Schema.Types.ObjectId;
@@ -78,6 +77,7 @@ const bookingSchema: Schema = new Schema<IBooking>(
     pickUp: {
       name: { type: String, required: true },
       address: { type: String, required: true },
+      city: { type: String, default: null },
       coords: {
         lat: { type: Number, required: true },
         lng: { type: Number, required: true },
@@ -87,6 +87,7 @@ const bookingSchema: Schema = new Schema<IBooking>(
     dropOff: {
       name: { type: String, required: true },
       address: { type: String, required: true },
+      city: { type: String, default: null },
       coords: {
         lat: { type: Number, required: true },
         lng: { type: Number, required: true },

@@ -28,6 +28,7 @@ import {
   removeClientCheckInJobs,
   scheduleClientCheckInJobs,
 } from "../../../workers/scheduledBookingCheckClientWorker";
+import { getCityFromPlaceId } from "../../../utils/helpers/getCity";
 
 export const requestAsapBooking = (socket: CustomSocket, io: Server) => {
   const on = withErrorHandling(socket);
@@ -286,9 +287,37 @@ export const requestScheduleBooking = (socket: CustomSocket, io: Server) => {
       return;
     }
 
-    // 1. Save booking to DB
+    // 🆕 GET CITY FROM GOOGLE PLACES API (for scheduled bookings only)
+    let pickupCity: string | null = null;
+
+    if (data.pickUp.placeId) {
+      pickupCity = await getCityFromPlaceId(data.pickUp.placeId);
+    }
+
+    // Fallback to polygon method if Google API fails or no placeId
+    if (!pickupCity) {
+      console.warn("⚠️ Falling back to polygon method for city detection");
+      pickupCity = extractCityFromCoords(data.pickUp.coords);
+    }
+
+    if (!pickupCity) {
+      console.log("❌ Could not determine city from pickup location");
+      socket.emit("bookingRequestFailed", {
+        message:
+          "Invalid pickup location. Please ensure pickup is within Metro Manila.",
+      });
+      return;
+    }
+
+    console.log(`📍 Pickup city: ${pickupCity}`);
+
+    // 1. Save booking to DB with city
     const booking = await BookingModel.create({
       ...data,
+      pickUp: {
+        ...data.pickUp,
+        city: pickupCity, // ← Store the city here
+      },
       "bookingType.value": new Date(data.bookingType.value),
       selectedVehicle: {
         vehicleTypeId: new mongoose.Types.ObjectId(
@@ -361,26 +390,9 @@ export const requestScheduleBooking = (socket: CustomSocket, io: Server) => {
       return;
     }
 
-    // 5. 🔧 Extract pickup city using IMPROVED function (polygons have 2km buffer for edge cases)
-    const pickupCity = extractCityFromCoords(booking.pickUp.coords);
-
-    if (!pickupCity) {
-      console.log(
-        "⚠️ Could not extract city from address:",
-        booking.pickUp.address,
-      );
-      socket.emit("booking_request_failed", {
-        message:
-          "Invalid pickup location. Please ensure pickup is within Metro Manila.",
-      });
-      return;
-    }
-
-    console.log(`📍 Pickup city: ${pickupCity}`);
-
     const vehicleRoom = `VEHICLE_${vehicleType.toUpperCase()}`;
 
-    // 6. Get available & on-duty drivers with matching vehicle type
+    // 5. Get available & on-duty drivers with matching vehicle type
     const vehicleSockets = await io.in(vehicleRoom).fetchSockets();
 
     const availableDriverSockets = vehicleSockets.filter(
@@ -393,25 +405,19 @@ export const requestScheduleBooking = (socket: CustomSocket, io: Server) => {
       `🔍 Found ${availableDriverSockets.length} available ${vehicleType} drivers`,
     );
 
-    // 7. 🔧 SIMPLIFIED: Batch query drivers with matching service areas
+    // 6. Query drivers with matching service areas
     const driverIds = availableDriverSockets.map((s) => s.data.userId);
 
-    // Build query conditions based on pickupCity
     let serviceAreaQuery;
 
     if (pickupCity === "Metro Manila") {
-      // 🔧 RARE CASE: Unknown city - only match drivers with "Metro Manila" catch-all
       serviceAreaQuery = { serviceAreas: "Metro Manila" };
       console.log(
         `⚠️ Rare case: Pickup city unknown, matching only "Metro Manila" drivers`,
       );
     } else {
-      // 🔧 NORMAL CASE: Match drivers who serve this specific city OR "Metro Manila" catch-all
       serviceAreaQuery = {
-        $or: [
-          { serviceAreas: pickupCity }, // Driver serves this specific city
-          { serviceAreas: "Metro Manila" }, // Driver serves all of Metro Manila
-        ],
+        $or: [{ serviceAreas: pickupCity }, { serviceAreas: "Metro Manila" }],
       };
     }
 
@@ -426,12 +432,10 @@ export const requestScheduleBooking = (socket: CustomSocket, io: Server) => {
       `✅ Found ${drivers.length} drivers servicing ${pickupCity} from database`,
     );
 
-    // Create a Set of eligible driver IDs for fast lookup
     const eligibleDriverIds = new Set(
       drivers.map((driver) => driver._id.toString()),
     );
 
-    // Filter sockets based on database results
     const eligibleDrivers = availableDriverSockets.filter((driverSocket) =>
       eligibleDriverIds.has(driverSocket.data.userId),
     );
@@ -447,14 +451,14 @@ export const requestScheduleBooking = (socket: CustomSocket, io: Server) => {
       `🚗 ${eligibleDrivers.length} ${vehicleType} drivers will receive this booking in ${pickupCity}`,
     );
 
-    // 8. Join eligible drivers to booking room
+    // 7. Join eligible drivers to booking room
     const temporaryRoom = `BOOKING_${booking._id}`;
 
     eligibleDrivers.forEach((driverSocket) => {
       driverSocket.join(temporaryRoom);
     });
 
-    // 9. Emit booking to eligible drivers
+    // 8. Emit booking to eligible drivers
     io.to(temporaryRoom).emit("new_booking_request", driverPayload);
 
     console.log(

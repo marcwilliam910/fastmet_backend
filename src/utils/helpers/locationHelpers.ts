@@ -259,14 +259,6 @@ const getDistanceToPolygonCenter = (
   return Math.sqrt(latDiff * latDiff + lngDiff * lngDiff);
 };
 
-/**
- * 🔧 IMPROVED: Extracts the most accurate city from coordinates
- * Strategy:
- * 1. Try BASE polygons first (no buffer) for precise matching
- * 2. If no match, try expanded polygons (with buffer) for edge cases
- * 3. If multiple matches in expanded polygons, pick closest by centroid distance
- * 4. Return "Metro Manila" only as last resort (very rare)
- */
 export const extractCityFromCoords = (coords: {
   lat: number;
   lng: number;

@@ -6,12 +6,8 @@ import { SOCKET_ROOMS } from "../../../utils/constants";
 import mongoose from "mongoose";
 import { sendNotifToClient } from "../../../utils/pushNotifications";
 import DriverModel from "../../../models/Driver";
-import {
-  extractCityFromCoords,
-  isDriverServicingCity,
-} from "../../../utils/helpers/locationHelpers";
+import { isDriverServicingCity } from "../../../utils/helpers/locationHelpers";
 import { getLateBoundary } from "../../../utils/helpers/date";
-import { RequestBooking } from "../../../types/booking";
 import { checkScheduleConflict } from "../../../utils/helpers/bookingFeasibility";
 
 export const toggleOnDuty = (socket: CustomSocket) => {
@@ -213,9 +209,10 @@ export const updateDriverLocation = (socket: CustomSocket) => {
       return distance <= (booking.currentRadiusKm || 5);
     });
 
-    // Filter scheduled bookings by service area and driver offered bookings
+    // Around line where you filter scheduled bookings
     const eligibleScheduledBookings = scheduledBookings.filter(
       (booking: any) => {
+        // Check schedule conflicts
         for (const offeredBooking of driverOfferedBookings) {
           const conflict = checkScheduleConflict(
             {
@@ -230,9 +227,12 @@ export const updateDriverLocation = (socket: CustomSocket) => {
           if (conflict !== "none") return false;
         }
 
-        // Check service area
-        const pickupCity = extractCityFromCoords(booking.pickUp.coords);
-        if (!pickupCity) return false;
+        const pickupCity = booking.pickUp.city;
+        if (!pickupCity) {
+          console.warn(`⚠️ Booking ${booking._id} missing city, skipping`);
+          return false;
+        }
+
         return isDriverServicingCity(driverServiceAreas, pickupCity);
       },
     );
@@ -399,8 +399,13 @@ export const setDriverAvailable = (socket: CustomSocket) => {
 
       const eligibleScheduledBookings = scheduledBookings.filter(
         (booking: any) => {
-          const pickupCity = extractCityFromCoords(booking.pickUp.coords);
-          if (!pickupCity) return false;
+          // 🆕 Use pre-stored city instead of calculating
+          const pickupCity = booking.pickUp.city; // ← Read from DB
+
+          if (!pickupCity) {
+            console.warn(`⚠️ Booking ${booking._id} missing city, skipping`);
+            return false;
+          }
           return isDriverServicingCity(driverServiceAreas, pickupCity);
         },
       );
