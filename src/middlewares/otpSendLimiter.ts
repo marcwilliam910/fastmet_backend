@@ -6,9 +6,22 @@ export const otpSendLimiter = rateLimit({
   max: 10, // Max 10 OTP requests per IP per hour
   message: {
     error: "Too many OTP requests from this device. Please try again later.",
+    success: false,
   },
   standardHeaders: true,
   legacyHeaders: false,
-  // Skip successful requests, only count when they hit the endpoint
+  skipSuccessfulRequests: false,
+});
+
+// IP-based rate limiter for OTP verification
+export const otpVerifyLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 15, // Max 15 verify attempts per IP per 15 minutes
+  message: {
+    error: "Too many verification attempts. Please try again later.",
+    success: false,
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
   skipSuccessfulRequests: false,
 });
