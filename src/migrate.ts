@@ -1,3 +1,4 @@
+import DriverModel from "./models/Driver";
 import NotificationModel from "./models/Notification";
 import { LocationDetails } from "./types/booking";
 const CLIENT_USER_ID = "698587014a773324bae9b4a8";
@@ -320,8 +321,80 @@ export async function seedNotifications() {
   }
 }
 
+/**
+ * Strict PH license format:
+ * A00-00-000000
+ * 1–3 letters + 2 digits + '-' + 2 digits + '-' + 6 digits
+ */
+function generateDummyLicense(): string {
+  // Prefix letters (1–3)
+  const lettersLength = Math.floor(Math.random() * 3) + 1;
+  let letters = "";
+  for (let i = 0; i < lettersLength; i++) {
+    letters += String.fromCharCode(65 + Math.floor(Math.random() * 26));
+  }
+
+  // Two-digit segments
+  const yearOrRegion = Math.floor(Math.random() * 100)
+    .toString()
+    .padStart(2, "0");
+
+  const batch = Math.floor(Math.random() * 100)
+    .toString()
+    .padStart(2, "0");
+
+  // Six-digit serial (strict)
+  const serial = Math.floor(Math.random() * 1_000_000)
+    .toString()
+    .padStart(6, "0");
+
+  return `${letters}${yearOrRegion}-${batch}-${serial}`;
+}
+
+export async function runDriverLicenseDummyMigration(): Promise<void> {
+  console.log(
+    "🚧 Replacing all driver license numbers with strict PH-format dummy values...",
+  );
+
+  const used = new Set<string>();
+  const cursor = DriverModel.find({}).cursor();
+
+  let processed = 0;
+  let updated = 0;
+
+  for await (const driver of cursor) {
+    processed++;
+
+    let newLicense: string;
+    let attempts = 0;
+
+    // Ensure uniqueness (unique index safe)
+    do {
+      newLicense = generateDummyLicense();
+      attempts++;
+
+      if (attempts > 50) {
+        throw new Error("Failed generating unique dummy license");
+      }
+    } while (
+      used.has(newLicense) ||
+      (await DriverModel.exists({ licenseNumber: newLicense }))
+    );
+
+    used.add(newLicense);
+
+    driver.licenseNumber = newLicense;
+    await driver.save();
+    updated++;
+  }
+
+  console.log("✅ Dummy license migration complete.");
+  console.log({ processed, updated });
+}
+
 // Export for direct use
 export default {
   seedNotifications,
+  runDriverLicenseDummyMigration,
   CLIENT_USER_ID,
 };

@@ -17,6 +17,7 @@
     "@types/express": "^5.0.3",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^22.0.0",
+    "axios": "^1.13.5",
     "bullmq": "^5.67.3",
     "cloudinary": "^2.8.0",
     "cors": "^2.8.5",

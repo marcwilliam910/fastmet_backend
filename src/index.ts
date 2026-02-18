@@ -5,7 +5,7 @@ import dotenv from "dotenv";
 dotenv.config();
 
 import mongoose from "mongoose";
-import { seedNotifications } from "./migrate";
+import { runDriverLicenseDummyMigration, seedNotifications } from "./migrate";
 import { errorHandler } from "./middlewares/errorHandler";
 import { getIO, initSocket } from "./sockets/socket";
 // client routes
@@ -96,6 +96,7 @@ mongoose
     // await syncIndexes();
     // await seedNotifications();
     // console.log("Indexes synchronized");
+    // await runDriverLicenseDummyMigration();
 
     server.listen(PORT, () => {
       console.log(`Server running at http://localhost:${PORT}`);
