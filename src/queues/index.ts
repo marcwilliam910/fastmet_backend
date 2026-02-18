@@ -10,15 +10,6 @@ export const bookingExpiryQueue = new Queue("bookingExpiry", {
   },
 });
 
-// // Queue for scheduled booking driver reminders (3 hour before pickup)
-// export const scheduledReminderQueue = new Queue("scheduledReminder", {
-//   connection: redisConnection,
-//   defaultJobOptions: {
-//     removeOnComplete: true,
-//     removeOnFail: 100,
-//   },
-// });
-
 export const notificationQueue = new Queue("notification", {
   connection: redisConnection,
   defaultJobOptions: {
@@ -32,9 +23,9 @@ export const notificationQueue = new Queue("notification", {
   },
 });
 
-// Queue for scheduled booking client check-in notifications + auto-accept/cancel
-export const scheduledBookingCheckClientQueue = new Queue(
-  "scheduledBookingCheckClient",
+// Queue for scheduled booking lifecycle jobs (client + driver checkpoints)
+export const scheduledBookingLifecycleQueue = new Queue(
+  "scheduledBookingLifecycle",
   {
     connection: redisConnection,
     defaultJobOptions: {
@@ -49,21 +40,8 @@ export const scheduledBookingCheckClientQueue = new Queue(
   },
 );
 
-// Queue for scheduled booking client check-in notifications + auto-accept/cancel
-export const scheduledBookingCheckDriverQueue = new Queue(
-  "scheduledBookingCheckDriver",
-  {
-    connection: redisConnection,
-    defaultJobOptions: {
-      removeOnComplete: true,
-      removeOnFail: 100,
-      attempts: 3,
-      backoff: {
-        type: "exponential",
-        delay: 3000,
-      },
-    },
-  },
-);
+// Backward-compatible aliases so producers can keep existing imports.
+export const scheduledBookingCheckClientQueue = scheduledBookingLifecycleQueue;
+export const scheduledBookingCheckDriverQueue = scheduledBookingLifecycleQueue;
 
 console.log("BullMQ queues initialized");

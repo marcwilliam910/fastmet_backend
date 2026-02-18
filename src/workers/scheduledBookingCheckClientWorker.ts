@@ -13,114 +13,130 @@ import { scheduleDriverCheckInJobs } from "./scheduledBookingCheckDriverWorker";
 
 type Checkpoint = "T4" | "T2" | "T1";
 
-interface ScheduledBookingCheckJobData {
+export interface ScheduledBookingCheckClientJobData {
   bookingId: string;
   checkpoint: Checkpoint;
 }
 
-export const startScheduledBookingCheckClientWorker = (io: Server) => {
-  const worker = new Worker<ScheduledBookingCheckJobData>(
-    "scheduledBookingCheckClient",
-    async (job: Job<ScheduledBookingCheckJobData>) => {
-      const { bookingId, checkpoint } = job.data;
+export const processScheduledBookingCheckClientJob = async (
+  io: Server,
+  jobData: ScheduledBookingCheckClientJobData,
+) => {
+  const { bookingId, checkpoint } = jobData;
 
-      console.log(`Scheduled check ${checkpoint} for booking ${bookingId}`);
+  console.log(`Scheduled check ${checkpoint} for booking ${bookingId}`);
 
-      const booking = await BookingModel.findById(bookingId).lean();
+  const booking = await BookingModel.findById(bookingId).lean();
 
-      if (!booking) {
-        console.log(`Booking ${bookingId} no longer exists, skipping`);
-        return;
-      }
+  if (!booking) {
+    console.log(`Booking ${bookingId} no longer exists, skipping`);
+    return;
+  }
 
-      // Already has a driver or is no longer pending
-      if (booking.driverId || booking.status !== "pending") {
-        console.log(
-          `Booking ${bookingId} already resolved (status: ${booking.status}), skipping`,
-        );
-        return;
-      }
+  // Already has a driver or is no longer pending
+  if (booking.driverId || booking.status !== "pending") {
+    console.log(
+      `Booking ${bookingId} already resolved (status: ${booking.status}), skipping`,
+    );
+    return;
+  }
 
-      const hasOffers = booking.requestedDrivers.length > 0;
-      const pickupTime = new Date(booking.bookingType.value);
-      const timeStr = pickupTime.toLocaleTimeString("en-US", {
-        hour: "numeric",
-        minute: "2-digit",
-      });
-
-      if (checkpoint === "T4") {
-        if (hasOffers) {
-          // Scenario A - T4: Has offers, hasn't chosen
-          await createNotifAndPush(
-            booking.customerId.toString(),
-            "Choose your driver",
-            `You have ${booking.requestedDrivers.length} offer(s) for your ${timeStr} pickup. Select one now!`,
-            "scheduled_choose_driver",
-            {
-              pickUp: booking.pickUp,
-              dropOff: booking.dropOff,
-              bookingId,
-            },
-          );
-        } else {
-          // Scenario B - T4: No offers
-          await createNotifAndPush(
-            booking.customerId.toString(),
-            "No drivers available yet",
-            `No drivers have offered for your ${timeStr} pickup. Consider rescheduling or cancelling.`,
-            "scheduled_no_drivers",
-            {
-              pickUp: booking.pickUp,
-              dropOff: booking.dropOff,
-              bookingId,
-            },
-          );
-        }
-      }
-
-      if (checkpoint === "T2") {
-        if (hasOffers) {
-          // Scenario A - T2: Still hasn't chosen, warn about auto-assign
-          await createNotifAndPush(
-            booking.customerId.toString(),
-            "Driver will be auto-assigned in 1 hour",
-            "Choose your preferred driver or we'll assign the highest-rated one.",
-            "scheduled_auto_assign_warning",
-            {
-              pickUp: booking.pickUp,
-              dropOff: booking.dropOff,
-              bookingId,
-            },
-          );
-        }
-        // Scenario B at T2: no offers, already notified at T4, nothing to do
-      }
-
-      if (checkpoint === "T1") {
-        if (hasOffers) {
-          await autoAcceptHighestRated(io, bookingId);
-        } else {
-          await autoCancelBooking(io, bookingId);
-        }
-      }
-    },
-    {
-      connection: redisConnection,
-      concurrency: 5,
-    },
-  );
-
-  worker.on("completed", (job) => {
-    console.log(`Scheduled check job ${job.id} completed`);
+  const hasOffers = booking.requestedDrivers.length > 0;
+  const pickupTime = new Date(booking.bookingType.value);
+  const timeStr = pickupTime.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
   });
 
-  worker.on("failed", (job, err) => {
-    console.error(`Scheduled check job ${job?.id} failed:`, err);
-  });
+  if (checkpoint === "T4") {
+    if (hasOffers) {
+      // Scenario A - T4: Has offers, hasn't chosen
+      await createNotifAndPush(
+        booking.customerId.toString(),
+        "Choose your driver",
+        `You have ${booking.requestedDrivers.length} offer(s) for your ${timeStr} pickup. Select one now!`,
+        "scheduled_choose_driver",
+        {
+          pickUp: booking.pickUp,
+          dropOff: booking.dropOff,
+          bookingId,
+        },
+      );
+    } else {
+      // Scenario B - T4: No offers
+      await createNotifAndPush(
+        booking.customerId.toString(),
+        "No drivers available yet",
+        `No drivers have offered for your ${timeStr} pickup. Consider rescheduling or cancelling.`,
+        "scheduled_no_drivers",
+        {
+          pickUp: booking.pickUp,
+          dropOff: booking.dropOff,
+          bookingId,
+        },
+      );
+    }
+  }
 
-  console.log("Scheduled booking check worker started");
-  return worker;
+  if (checkpoint === "T2") {
+    if (hasOffers) {
+      // Scenario A - T2: Still hasn't chosen, warn about auto-assign
+      await createNotifAndPush(
+        booking.customerId.toString(),
+        "Driver will be auto-assigned in 1 hour",
+        "Choose your preferred driver or we'll assign the highest-rated one.",
+        "scheduled_auto_assign_warning",
+        {
+          pickUp: booking.pickUp,
+          dropOff: booking.dropOff,
+          bookingId,
+        },
+      );
+    }
+    // Scenario B at T2: no offers, already notified at T4, nothing to do
+  }
+
+  if (checkpoint === "T1") {
+    if (hasOffers) {
+      await autoAcceptHighestRated(io, bookingId);
+    } else {
+      await autoCancelBooking(io, bookingId);
+    }
+  }
 };
+
+// export const startScheduledBookingCheckClientWorker = (io: Server) => {
+//   const worker = new Worker<ScheduledBookingCheckClientJobData>(
+//     "scheduledBookingCheckClient",
+//     async (job: Job<ScheduledBookingCheckClientJobData>) => {
+//       await processScheduledBookingCheckClientJob(io, job.data);
+//     },
+//     {
+//       connection: redisConnection,
+//       concurrency: 2, //5
+//       drainDelay: 10_000, // Wait 10 seconds before checking for new jobs after processing the current batch
+//     },
+//   );
+
+//   worker.on("completed", (job) => {
+//     console.log(`Scheduled check job ${job.id} completed`);
+//   });
+
+//   worker.on("failed", (job, err) => {
+//     console.error(`Scheduled check job ${job?.id} failed:`, err);
+//   });
+
+//   worker.on("error", async (err) => {
+//     if (err.message.includes("max requests limit exceeded")) {
+//       console.error("Upstash limit reached. Shutting down worker...");
+//       await worker.close();
+//       process.exit(1);
+//     }
+//   });
+
+//   console.log("Scheduled booking check worker started");
+//   return worker;
+// };
 
 // ---------------------------------------------------------------------------
 // Helpers

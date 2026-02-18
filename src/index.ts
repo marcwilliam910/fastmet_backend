@@ -28,10 +28,7 @@ import driverAdminRoute from "./routes/admin/driverRoute";
 import vehicleRoute from "./routes/vehicleRoute";
 
 import { authenticateJWT } from "./middlewares/verifyToken";
-import { startBookingExpiryWorker } from "./workers/bookingExpiryWorker";
-import { startNotificationWorker } from "./workers/notificationWorker";
-// import { startScheduledReminderWorker } from "./workers/scheduledReminderWorker";
-import { startScheduledBookingCheckClientWorker } from "./workers/scheduledBookingCheckClientWorker";
+import { shutdownWorkers, startWorkers } from "./workers/bootstrap";
 import { syncIndexes } from "./scripts/syncIndexes";
 
 const app = express();
@@ -70,6 +67,27 @@ initSocket(server);
 
 app.use(errorHandler);
 
+let isShuttingDown = false;
+const handleShutdown = async (signal: string) => {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+
+  console.log(`Received ${signal}. Shutting down gracefully...`);
+  await shutdownWorkers();
+
+  server.close(async () => {
+    await mongoose.connection.close();
+    process.exit(0);
+  });
+};
+
+process.on("SIGINT", () => {
+  void handleShutdown("SIGINT");
+});
+process.on("SIGTERM", () => {
+  void handleShutdown("SIGTERM");
+});
+
 mongoose
   .connect(process.env.MONGODB_URI!)
   .then(async () => {
@@ -82,13 +100,8 @@ mongoose
     server.listen(PORT, () => {
       console.log(`Server running at http://localhost:${PORT}`);
 
-      // ✅ Start BullMQ workers AFTER MongoDB is connected and server is listening
       const io = getIO();
-      startBookingExpiryWorker(io);
-      startNotificationWorker();
-      // startScheduledReminderWorker();
-      startScheduledBookingCheckClientWorker(io);
-      console.log("⏰ BullMQ workers initialized");
+      startWorkers(io);
     });
   })
   .catch((err) => {

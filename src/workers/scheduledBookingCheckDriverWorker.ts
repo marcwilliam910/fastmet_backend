@@ -12,96 +12,112 @@ import { scheduledBookingCheckDriverQueue } from "../queues";
 
 type Checkpoint = "T5" | "T2" | "T0.20";
 
-interface ScheduledBookingCheckJobData {
+export interface ScheduledBookingCheckDriverJobData {
   bookingId: string;
   checkpoint: Checkpoint;
   driverId: string;
 }
 
-export const startScheduledBookingCheckDriverWorker = (io: Server) => {
-  const worker = new Worker<ScheduledBookingCheckJobData>(
-    "scheduledBookingCheckDriver",
-    async (job: Job<ScheduledBookingCheckJobData>) => {
-      const { bookingId, checkpoint, driverId } = job.data;
+export const processScheduledBookingCheckDriverJob = async (
+  io: Server,
+  jobData: ScheduledBookingCheckDriverJobData,
+) => {
+  const { bookingId, checkpoint, driverId } = jobData;
 
-      console.log(`Scheduled check ${checkpoint} for booking ${bookingId}`);
+  console.log(`Scheduled check ${checkpoint} for booking ${bookingId}`);
 
-      const booking = await BookingModel.findById(bookingId).lean();
+  const booking = await BookingModel.findById(bookingId).lean();
 
-      if (!booking) {
-        console.log(`Booking ${bookingId} no longer exists, skipping`);
-        return;
-      }
+  if (!booking) {
+    console.log(`Booking ${bookingId} no longer exists, skipping`);
+    return;
+  }
 
-      if (booking.driverId?.toString() !== driverId) {
-        console.log(
-          `Booking ${bookingId} is not assigned to driver ${driverId}, skipping`,
-        );
-        return;
-      }
+  if (booking.driverId?.toString() !== driverId) {
+    console.log(
+      `Booking ${bookingId} is not assigned to driver ${driverId}, skipping`,
+    );
+    return;
+  }
 
-      if (checkpoint === "T5") {
-        if (booking.status !== "scheduled") {
-          console.log(`Booking ${bookingId} is not scheduled, skipping`);
-          return;
-        }
+  if (checkpoint === "T5") {
+    if (booking.status !== "scheduled") {
+      console.log(`Booking ${bookingId} is not scheduled, skipping`);
+      return;
+    }
 
-        // Scenario A - notify driver that their scheduled booking is near pickup time
-        await createNotifAndPush(
-          driverId,
-          "Upcoming pickup reminder",
-          `You have a scheduled pickup at ${formatDate(booking.bookingType.value.toString())} in ${booking.pickUp.name}. Be ready!`,
-          "upcoming_pickup_reminder",
-          {
-            pickUp: booking.pickUp,
-            dropOff: booking.dropOff,
-            pickup_time: booking.bookingType.value,
-          },
-        );
-      }
+    // Scenario A - notify driver that their scheduled booking is near pickup time
+    await createNotifAndPush(
+      driverId,
+      "Upcoming pickup reminder",
+      `You have a scheduled pickup at ${formatDate(booking.bookingType.value.toString())} in ${booking.pickUp.name}. Be ready!`,
+      "upcoming_pickup_reminder",
+      {
+        pickUp: booking.pickUp,
+        dropOff: booking.dropOff,
+        pickup_time: booking.bookingType.value,
+      },
+    );
+  }
 
-      if (checkpoint === "T2") {
-        if (booking.status !== "scheduled") {
-          console.log(`Booking ${bookingId} is not scheduled, skipping`);
-          return;
-        }
+  if (checkpoint === "T2") {
+    if (booking.status !== "scheduled") {
+      console.log(`Booking ${bookingId} is not scheduled, skipping`);
+      return;
+    }
 
-        await createNotifAndPush(
-          driverId,
-          "Time to head to pickup",
-          `Your pickup is in 2 hours at ${booking.pickUp.name}. Start heading there now.`,
-          "time_to_prepare_for_pickup",
-          {
-            pickUp: booking.pickUp,
-            dropOff: booking.dropOff,
-            bookingId,
-          },
-        );
-      }
+    await createNotifAndPush(
+      driverId,
+      "Time to head to pickup",
+      `Your pickup is in 2 hours at ${booking.pickUp.name}. Start heading there now.`,
+      "time_to_prepare_for_pickup",
+      {
+        pickUp: booking.pickUp,
+        dropOff: booking.dropOff,
+        bookingId,
+      },
+    );
+  }
 
-      if (checkpoint === "T0.20") {
-        if (booking.status !== "active") {
-          await autoRemoveDriverFromBooking(io, bookingId, driverId);
-        }
-      }
-    },
-    {
-      connection: redisConnection,
-      concurrency: 5,
-    },
-  );
-
-  worker.on("completed", (job) => {
-    console.log(`Scheduled check job ${job.id} completed`);
-  });
-
-  worker.on("failed", (job, err) => {
-    console.error(`Scheduled check job ${job?.id} failed:`, err);
-  });
-
-  console.log("Scheduled booking check worker started");
-  return worker;
+  if (checkpoint === "T0.20") {
+    if (booking.status !== "active") {
+      await autoRemoveDriverFromBooking(io, bookingId, driverId);
+    }
+  }
 };
+
+// export const startScheduledBookingCheckDriverWorker = (io: Server) => {
+//   const worker = new Worker<ScheduledBookingCheckDriverJobData>(
+//     "scheduledBookingCheckDriver",
+//     async (job: Job<ScheduledBookingCheckDriverJobData>) => {
+//       await processScheduledBookingCheckDriverJob(io, job.data);
+//     },
+//     {
+//       connection: redisConnection,
+//       concurrency: 2, //5
+//       drainDelay: 10_000, // Wait 10 seconds before checking for new jobs after processing the current batch
+//     },
+//   );
+
+//   worker.on("completed", (job) => {
+//     console.log(`Scheduled check job ${job.id} completed`);
+//   });
+
+//   worker.on("failed", (job, err) => {
+//     console.error(`Scheduled check job ${job?.id} failed:`, err);
+//   });
+
+//   worker.on("error", async (err) => {
+//     if (err.message.includes("max requests limit exceeded")) {
+//       console.error("Upstash limit reached. Shutting down worker...");
+//       await worker.close();
+//       process.exit(1);
+//     }
+//   });
+
+//   console.log("Scheduled booking check worker started");
+//   return worker;
+// };
 
 // ---------------------------------------------------------------------------
 // Helpers

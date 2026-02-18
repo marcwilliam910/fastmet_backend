@@ -13,7 +13,8 @@ export const startNotificationWorker = () => {
     },
     {
       connection: redisConnection,
-      concurrency: 10,
+      concurrency: 2, //10
+      drainDelay: 10_000, // Wait 10 seconds before checking for new jobs after processing the current batch
     },
   );
 
@@ -23,6 +24,14 @@ export const startNotificationWorker = () => {
 
   worker.on("failed", (job, err) => {
     console.error(`Notification job ${job?.id} failed:`, err);
+  });
+
+  worker.on("error", async (err) => {
+    if (err.message.includes("max requests limit exceeded")) {
+      console.error("Upstash limit reached. Shutting down worker...");
+      await worker.close();
+      process.exit(1);
+    }
   });
 
   console.log("Notification worker started");
