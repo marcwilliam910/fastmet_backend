@@ -32,7 +32,7 @@ export const startScheduledBookingLifecycleWorker = (io: Server) => {
     },
     {
       connection: redisConnection,
-      concurrency: 2, //8
+      concurrency: 8, //8
       drainDelay: 10_000, // Wait 10 seconds before checking for new jobs after processing the current batch
     },
   );

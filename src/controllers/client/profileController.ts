@@ -12,18 +12,11 @@ export type UserAddress = {
   name: string;
   fullAddress: string;
   coords: { lat: number; lng: number };
-  street?: string;
-  barangay?: string;
-  city?: string;
-  province?: string;
-  postalCode?: string;
+  street: string;
+  barangay: string;
+  city: string;
+  province: string;
 } | null;
-
-const asTrimmedStringOrUndefined = (v: unknown): string | undefined => {
-  if (typeof v !== "string") return undefined;
-  const t = v.trim();
-  return t.length ? t : undefined;
-};
 
 const asRequiredTrimmedString = (v: unknown): string | null => {
   if (typeof v !== "string") return null;
@@ -41,7 +34,7 @@ const asNumberOrNull = (v: unknown): number | null => {
 };
 
 const buildAddressFromBody = (
-  body: any
+  body: any,
 ):
   | { ok: true; address: UserAddress; anyProvided: boolean }
   | { ok: false; error: string } => {
@@ -53,8 +46,7 @@ const buildAddressFromBody = (
     body?.addressStreet !== undefined ||
     body?.addressBarangay !== undefined ||
     body?.addressCity !== undefined ||
-    body?.addressProvince !== undefined ||
-    body?.addressPostalCode !== undefined;
+    body?.addressProvince !== undefined;
 
   if (!anyProvided) {
     return { ok: true, address: null, anyProvided: false };
@@ -62,14 +54,27 @@ const buildAddressFromBody = (
 
   const name = asRequiredTrimmedString(body?.addressName);
   const fullAddress = asRequiredTrimmedString(body?.addressFullAddress);
+  const street = asRequiredTrimmedString(body?.addressStreet);
+  const barangay = asRequiredTrimmedString(body?.addressBarangay);
+  const city = asRequiredTrimmedString(body?.addressCity);
+  const province = asRequiredTrimmedString(body?.addressProvince);
+
   const lat = asNumberOrNull(body?.addressLat);
   const lng = asNumberOrNull(body?.addressLng);
 
-  if (!name || !fullAddress || lat === null || lng === null) {
+  if (
+    !name ||
+    !fullAddress ||
+    !street ||
+    !barangay ||
+    !city ||
+    !province ||
+    lat === null ||
+    lng === null
+  ) {
     return {
       ok: false,
-      error:
-        "Address fields are required: addressName, addressFullAddress, addressLat, addressLng",
+      error: "Address fields are required",
     };
   }
 
@@ -77,19 +82,11 @@ const buildAddressFromBody = (
     name,
     fullAddress,
     coords: { lat, lng },
+    street,
+    barangay,
+    city,
+    province,
   };
-
-  const street = asTrimmedStringOrUndefined(body?.addressStreet);
-  const barangay = asTrimmedStringOrUndefined(body?.addressBarangay);
-  const city = asTrimmedStringOrUndefined(body?.addressCity);
-  const province = asTrimmedStringOrUndefined(body?.addressProvince);
-  const postalCode = asTrimmedStringOrUndefined(body?.addressPostalCode);
-
-  if (street) address.street = street;
-  if (barangay) address.barangay = barangay;
-  if (city) address.city = city;
-  if (province) address.province = province;
-  if (postalCode) address.postalCode = postalCode;
 
   return { ok: true, address, anyProvided: true };
 };
@@ -141,7 +138,7 @@ export const registerProfile: RequestHandler = async (req, res) => {
       profilePictureUrl,
       isProfileComplete: true,
     },
-    { new: true }
+    { new: true },
   );
 
   if (!user) {

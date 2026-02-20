@@ -210,12 +210,14 @@ export const uploadMultipleImagesWithPublicIds = async (
   imageType: string = "default",
 ): Promise<Array<{ type: string; url: string }>> => {
   const config = IMAGE_CONFIGS[imageType] || IMAGE_CONFIGS.default;
+  const results: Array<{ type: string; url: string }> = [];
 
-  const uploadPromises = files.map(async (file, index) => {
+  for (let index = 0; index < files.length; index++) {
+    const file = files[index];
+    const publicId = publicIds[index];
+
     try {
-      const publicId = publicIds[index];
-
-      // Compress image using sharp
+      // Compress
       const compressedBuffer = await sharp(file.buffer)
         .resize(config.maxWidth, config.maxWidth, {
           fit: "inside",
@@ -224,8 +226,15 @@ export const uploadMultipleImagesWithPublicIds = async (
         .jpeg({ quality: config.quality, mozjpeg: true })
         .toBuffer();
 
+      // Free original buffer immediately after compression
+      file.buffer = Buffer.alloc(0);
+
       // Upload to Cloudinary
       const result = await new Promise<any>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          reject(new Error(`Cloudinary upload timed out for file ${index}`));
+        }, 60000);
+
         const stream = cloudinary.uploader.upload_stream(
           {
             folder,
@@ -238,6 +247,7 @@ export const uploadMultipleImagesWithPublicIds = async (
             ],
           },
           (error, result) => {
+            clearTimeout(timeout);
             if (error || !result) {
               reject(error || new Error("Upload failed"));
             } else {
@@ -249,14 +259,14 @@ export const uploadMultipleImagesWithPublicIds = async (
         stream.end(compressedBuffer);
       });
 
-      return { type: publicId, url: result.secure_url };
+      results.push({ type: publicId, url: result.secure_url });
     } catch (error) {
       console.error(`Error uploading file ${index}:`, error);
       throw error;
     }
-  });
+  }
 
-  return Promise.all(uploadPromises);
+  return results;
 };
 
 export const uploadWatermarkedImageToCloudinary = async (

@@ -129,6 +129,8 @@ export const requestAsapBooking = (socket: CustomSocket, io: Server) => {
     /* 4. Recursive search step                                            */
     /* ------------------------------------------------------------------ */
     const driverList = new Set<string>();
+    let searchTimeout: ReturnType<typeof setTimeout> | null = null; // ✅ track it
+
     const runSearchStep = async () => {
       // Populate and type-check vehicleTypeId to assure type safety for freeServices
       const freshBooking = await BookingModel.findById(booking._id)
@@ -251,8 +253,17 @@ export const requestAsapBooking = (socket: CustomSocket, io: Server) => {
         $set: { currentRadiusKm: nextRadius },
       });
 
-      setTimeout(runSearchStep, intervalMs);
+      searchTimeout = setTimeout(runSearchStep, intervalMs);
     };
+
+    // ✅ Cancel search if client disconnects mid-search
+    socket.on("disconnect", async () => {
+      if (searchTimeout) {
+        clearTimeout(searchTimeout);
+        searchTimeout = null;
+      }
+      driverList.clear();
+    });
 
     /* ------------------------------------------------------------------ */
     /* 5. Start first search                                               */

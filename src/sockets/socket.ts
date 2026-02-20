@@ -21,7 +21,6 @@ import {
   updateDriverLocation,
 } from "./handlers/driver/duty";
 import jwt from "jsonwebtoken";
-import { SOCKET_ROOMS } from "../utils/constants";
 import { chatHandler } from "./handlers/chat";
 
 // Extend Socket type to include custom data properties
@@ -115,6 +114,7 @@ export const initSocket = (server: any) => {
 
     socket.on("disconnect", () => {
       console.log(`${socket.data.userType} disconnected: ${socket.id}`);
+      socket.removeAllListeners(); // ✅ safety net
     });
   });
 

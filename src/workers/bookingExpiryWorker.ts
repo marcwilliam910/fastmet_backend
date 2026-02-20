@@ -79,7 +79,7 @@ export const startBookingExpiryWorker = (io: Server) => {
     },
     {
       connection: redisConnection,
-      concurrency: 2, // Process up to 5 jobs concurrently
+      concurrency: 5, // Process up to 5 jobs concurrently
       drainDelay: 10_000, // Wait 10 seconds before checking for new jobs after processing the current batch
     },
   );

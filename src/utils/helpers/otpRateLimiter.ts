@@ -17,7 +17,7 @@ interface RateLimitResult {
 }
 
 export async function checkOTPRateLimit(
-  phoneNumber: string
+  phoneNumber: string,
 ): Promise<RateLimitResult> {
   const now = new Date();
 
@@ -29,7 +29,7 @@ export async function checkOTPRateLimit(
 
   if (attempt.blockedUntil && attempt.blockedUntil > now) {
     const retryAfter = Math.ceil(
-      (attempt.blockedUntil.getTime() - now.getTime()) / 1000
+      (attempt.blockedUntil.getTime() - now.getTime()) / 1000,
     );
     const minutes = Math.ceil(retryAfter / 60);
 
@@ -78,14 +78,14 @@ export async function recordOTPAttempt(phoneNumber: string): Promise<void> {
         verifyBlockedUntil: "", // Use $unset to actually remove the field
       },
     },
-    { upsert: true, new: true }
+    { upsert: true, new: true },
   );
 }
 
 // ============ VERIFICATION RATE LIMITING ============
 
 export async function checkVerifyRateLimit(
-  phoneNumber: string
+  phoneNumber: string,
 ): Promise<RateLimitResult> {
   const now = new Date();
 
@@ -98,7 +98,7 @@ export async function checkVerifyRateLimit(
   // Check if currently blocked from verification
   if (attempt.verifyBlockedUntil && attempt.verifyBlockedUntil > now) {
     const retryAfter = Math.ceil(
-      (attempt.verifyBlockedUntil.getTime() - now.getTime()) / 1000
+      (attempt.verifyBlockedUntil.getTime() - now.getTime()) / 1000,
     );
     const minutes = Math.ceil(retryAfter / 60);
 
@@ -115,7 +115,7 @@ export async function checkVerifyRateLimit(
   if (attempt.verifyAttempts >= RATE_LIMITS.MAX_VERIFY_ATTEMPTS) {
     // Block verification
     attempt.verifyBlockedUntil = new Date(
-      now.getTime() + RATE_LIMITS.VERIFY_BLOCK_DURATION
+      now.getTime() + RATE_LIMITS.VERIFY_BLOCK_DURATION,
     );
     await attempt.save();
 
@@ -130,7 +130,7 @@ export async function checkVerifyRateLimit(
 }
 
 export async function recordFailedVerification(
-  phoneNumber: string
+  phoneNumber: string,
 ): Promise<void> {
   await OTPAttemptModel.findOneAndUpdate(
     { phoneNumber },
@@ -138,12 +138,12 @@ export async function recordFailedVerification(
       $inc: { verifyAttempts: 1 },
       $set: { lastVerifyAttempt: new Date() },
     },
-    { upsert: true, new: true }
+    { upsert: true, new: true },
   );
 }
 
 export async function clearVerificationAttempts(
-  phoneNumber: string
+  phoneNumber: string,
 ): Promise<void> {
   // Clear verification attempts on successful verification
   await OTPAttemptModel.findOneAndUpdate(
@@ -155,6 +155,8 @@ export async function clearVerificationAttempts(
       $unset: {
         verifyBlockedUntil: "",
       },
-    }
+    },
   );
 }
+
+//DELETE THIS AFTER AUTH UPDATE ON USER

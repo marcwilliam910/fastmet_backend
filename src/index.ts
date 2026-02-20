@@ -5,7 +5,6 @@ import dotenv from "dotenv";
 dotenv.config();
 
 import mongoose from "mongoose";
-import { runDriverLicenseDummyMigration, seedNotifications } from "./migrate";
 import { errorHandler } from "./middlewares/errorHandler";
 import { getIO, initSocket } from "./sockets/socket";
 // client routes
@@ -26,10 +25,12 @@ import driverAdminRoute from "./routes/admin/driverRoute";
 
 // for all
 import vehicleRoute from "./routes/vehicleRoute";
+import bookingTypeRoute from "./routes/bookingTypeRoute";
 
 import { authenticateJWT } from "./middlewares/verifyToken";
 import { shutdownWorkers, startWorkers } from "./workers/bootstrap";
 import { syncIndexes } from "./scripts/syncIndexes";
+import { seedBookingTypes } from "./migrate";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -60,6 +61,7 @@ app.use("/api/driver/notifications", authenticateJWT, notificationDriverRoutes);
 app.use("/api/admin/driver", driverAdminRoute);
 
 app.use("/api/vehicles", vehicleRoute);
+app.use("/api/booking-types", bookingTypeRoute);
 
 const server = http.createServer(app);
 
@@ -93,10 +95,7 @@ mongoose
   .then(async () => {
     console.log("MongoDB connected");
 
-    // await syncIndexes();
-    // await seedNotifications();
-    // console.log("Indexes synchronized");
-    // await runDriverLicenseDummyMigration();
+    // await seedBookingTypes();
 
     server.listen(PORT, () => {
       console.log(`Server running at http://localhost:${PORT}`);
