@@ -17,17 +17,38 @@ export function normalizePHPhoneNumber(phoneNumber: string): string | null {
 const MAX_OTP_REQUESTS_PER_MINUTE = 3;
 const MAX_VERIFY_ATTEMPTS = 5;
 
+const RATE_LIMIT_SCRIPT = `
+  local key = KEYS[1]
+  local limit = tonumber(ARGV[1])
+  local ttl = tonumber(ARGV[2])
+
+  local count = redis.call('INCR', key)
+
+  -- Only set TTL on the FIRST increment — prevents resetting window on each request
+  if count == 1 then
+    redis.call('EXPIRE', key, ttl)
+  end
+
+  return count
+`;
 /**
  * Rate limits OTP send requests — max 3 per phone per minute.
- * Always refreshes TTL to prevent key living forever on concurrent requests.
+ * Uses a Lua script to atomically INCR + conditionally set TTL,
+ * preventing orphaned keys and avoiding TTL reset on every request.
  */
 export async function checkPhoneRateLimit(
   phoneNumber: string,
 ): Promise<boolean> {
   const key = `otp:ratelimit:${phoneNumber}`;
-  const count = await redisConnection.incr(key);
-  // Always set TTL — prevents orphaned keys on concurrent first-requests
-  await redisConnection.expire(key, 60);
+
+  const count = (await redisConnection.eval(
+    RATE_LIMIT_SCRIPT,
+    1, // number of KEYS
+    key, // KEYS[1]
+    String(MAX_OTP_REQUESTS_PER_MINUTE), // ARGV[1]
+    "60", // ARGV[2] — TTL in seconds
+  )) as number;
+
   return count <= MAX_OTP_REQUESTS_PER_MINUTE;
 }
 

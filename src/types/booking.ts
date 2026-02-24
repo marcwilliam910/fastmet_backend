@@ -36,6 +36,7 @@ export type LocationDetails = {
   name: string;
   address: string;
   city?: string;
+  placeId: string;
   coords: { lat: number; lng: number };
   additionalDetails?: string;
 };

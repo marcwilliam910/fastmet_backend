@@ -161,43 +161,61 @@ export const updateDriverLocation = (socket: CustomSocket) => {
     }
 
     // Fetch ASAP and scheduled bookings in parallel
-    const [asapBookings, scheduledBookings] = await Promise.all([
-      BookingModel.find({
-        status: "searching",
-        "bookingType.type": "asap",
-        "selectedVehicle.vehicleTypeId": driver.vehicle,
-        "selectedVehicle.variantId": driver.vehicleVariant || null,
-      })
-        .sort({ createdAt: -1 })
-        .populate({
-          path: "customerId",
-          select: "fullName profilePictureUrl phoneNumber",
+    const [asapBookings, scheduledBookings, poolingBookings] =
+      await Promise.all([
+        BookingModel.find({
+          status: "searching",
+          "bookingType.type": "asap",
+          "selectedVehicle.vehicleTypeId": driver.vehicle,
+          "selectedVehicle.variantId": driver.vehicleVariant,
         })
-        .populate({
-          path: "selectedVehicle.vehicleTypeId",
-          select: "name freeServices",
+          .sort({ createdAt: -1 })
+          .populate({
+            path: "customerId",
+            select: "fullName profilePictureUrl phoneNumber",
+          })
+          .populate({
+            path: "selectedVehicle.vehicleTypeId",
+            select: "name freeServices",
+          })
+          .lean(),
+        BookingModel.find({
+          status: "pending",
+          "bookingType.type": "schedule",
+          "selectedVehicle.vehicleTypeId": driver.vehicle,
+          "selectedVehicle.variantId": driver.vehicleVariant,
+          requestedDrivers: { $nin: [new mongoose.Types.ObjectId(driverId)] },
+          "bookingType.value": { $gte: getLateBoundary() },
+          ...cityFilter, // 🆕 Apply city filter here
         })
-        .lean(),
-      BookingModel.find({
-        status: "pending",
-        "bookingType.type": "schedule",
-        "selectedVehicle.vehicleTypeId": driver.vehicle,
-        "selectedVehicle.variantId": driver.vehicleVariant || null,
-        requestedDrivers: { $nin: [new mongoose.Types.ObjectId(driverId)] },
-        "bookingType.value": { $gte: getLateBoundary() },
-        ...cityFilter, // 🆕 Apply city filter here
-      })
-        .sort({ "bookingType.value": 1 })
-        .populate({
-          path: "customerId",
-          select: "fullName profilePictureUrl phoneNumber",
+          .sort({ "bookingType.value": 1 })
+          .populate({
+            path: "customerId",
+            select: "fullName profilePictureUrl phoneNumber",
+          })
+          .populate({
+            path: "selectedVehicle.vehicleTypeId",
+            select: "name freeServices",
+          })
+          .lean(),
+        BookingModel.find({
+          status: "pending",
+          "bookingType.type": "pooling",
+          "selectedVehicle.vehicleTypeId": driver.vehicle,
+          "selectedVehicle.variantId": driver.vehicleVariant,
+          ...cityFilter,
         })
-        .populate({
-          path: "selectedVehicle.vehicleTypeId",
-          select: "name freeServices",
-        })
-        .lean(),
-    ]);
+          .sort({ createdAt: -1 })
+          .populate({
+            path: "customerId",
+            select: "fullName profilePictureUrl phoneNumber",
+          })
+          .populate({
+            path: "selectedVehicle.vehicleTypeId",
+            select: "name freeServices",
+          })
+          .lean(),
+      ]);
 
     const driverOfferedBookings = await BookingModel.find({
       requestedDrivers: { $in: [new mongoose.Types.ObjectId(driverId)] },
@@ -250,6 +268,7 @@ export const updateDriverLocation = (socket: CustomSocket) => {
     const allEligibleBookings = [
       ...nearbyAsapBookings,
       ...eligibleScheduledBookings,
+      ...poolingBookings,
     ];
 
     const formattedBookings = allEligibleBookings.map((booking: any) => {
@@ -278,7 +297,7 @@ export const updateDriverLocation = (socket: CustomSocket) => {
 
     console.log(
       `📦 Driver ${socket.data.userId} sees ${formattedBookings.length} total bookings ` +
-        `(${nearbyAsapBookings.length} ASAP + ${eligibleScheduledBookings.length} scheduled)`,
+        `(${nearbyAsapBookings.length} ASAP + ${eligibleScheduledBookings.length} scheduled) + (${poolingBookings.length} pooling)`,
     );
 
     socket.emit("pendingBookingsUpdated", {
@@ -367,43 +386,61 @@ export const setDriverAvailable = (socket: CustomSocket) => {
       }
 
       // Fetch eligible bookings in parallel
-      const [asapBookings, scheduledBookings] = await Promise.all([
-        BookingModel.find({
-          status: "searching",
-          "bookingType.type": "asap",
-          "selectedVehicle.vehicleTypeId": driver.vehicle,
-          "selectedVehicle.variantId": driver.vehicleVariant || null,
-        })
-          .sort({ createdAt: -1 })
-          .populate({
-            path: "customerId",
-            select: "fullName profilePictureUrl phoneNumber",
+      const [asapBookings, scheduledBookings, poolingBookings] =
+        await Promise.all([
+          BookingModel.find({
+            status: "searching",
+            "bookingType.type": "asap",
+            "selectedVehicle.vehicleTypeId": driver.vehicle,
+            "selectedVehicle.variantId": driver.vehicleVariant || null,
           })
-          .populate({
-            path: "selectedVehicle.vehicleTypeId",
-            select: "name freeServices",
+            .sort({ createdAt: -1 })
+            .populate({
+              path: "customerId",
+              select: "fullName profilePictureUrl phoneNumber",
+            })
+            .populate({
+              path: "selectedVehicle.vehicleTypeId",
+              select: "name freeServices",
+            })
+            .lean(),
+          BookingModel.find({
+            status: "pending",
+            "bookingType.type": "schedule",
+            "selectedVehicle.vehicleTypeId": driver.vehicle,
+            "selectedVehicle.variantId": driver.vehicleVariant || null,
+            requestedDrivers: { $nin: [new mongoose.Types.ObjectId(driverId)] },
+            "bookingType.value": { $gte: getLateBoundary() },
+            ...cityFilter, // 🆕 Apply city filter here
           })
-          .lean(),
-        BookingModel.find({
-          status: "pending",
-          "bookingType.type": "schedule",
-          "selectedVehicle.vehicleTypeId": driver.vehicle,
-          "selectedVehicle.variantId": driver.vehicleVariant || null,
-          requestedDrivers: { $nin: [new mongoose.Types.ObjectId(driverId)] },
-          "bookingType.value": { $gte: getLateBoundary() },
-          ...cityFilter, // 🆕 Apply city filter here
-        })
-          .sort({ "bookingType.value": 1 })
-          .populate({
-            path: "customerId",
-            select: "fullName profilePictureUrl phoneNumber",
+            .sort({ "bookingType.value": 1 })
+            .populate({
+              path: "customerId",
+              select: "fullName profilePictureUrl phoneNumber",
+            })
+            .populate({
+              path: "selectedVehicle.vehicleTypeId",
+              select: "name freeServices",
+            })
+            .lean(),
+          BookingModel.find({
+            status: "pending",
+            "bookingType.type": "pooling",
+            "selectedVehicle.vehicleTypeId": driver.vehicle,
+            "selectedVehicle.variantId": driver.vehicleVariant,
+            ...cityFilter,
           })
-          .populate({
-            path: "selectedVehicle.vehicleTypeId",
-            select: "name freeServices",
-          })
-          .lean(),
-      ]);
+            .sort({ createdAt: -1 })
+            .populate({
+              path: "customerId",
+              select: "fullName profilePictureUrl phoneNumber",
+            })
+            .populate({
+              path: "selectedVehicle.vehicleTypeId",
+              select: "name freeServices",
+            })
+            .lean(),
+        ]);
 
       const driverOfferedBookings = await BookingModel.find({
         requestedDrivers: { $in: [new mongoose.Types.ObjectId(driverId)] },
@@ -446,6 +483,7 @@ export const setDriverAvailable = (socket: CustomSocket) => {
       const allEligibleBookings = [
         ...nearbyAsapBookings,
         ...eligibleScheduledBookings,
+        ...poolingBookings,
       ];
 
       const formattedBookings = allEligibleBookings.map((booking: any) => {

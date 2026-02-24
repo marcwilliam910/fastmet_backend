@@ -6,6 +6,7 @@ import {
   requestAsapBooking,
   requestScheduleBooking,
   asapTimerEnd,
+  requestPoolingBooking,
 } from "./handlers/client/booking";
 import {
   arrivedAtPickup,
@@ -106,6 +107,7 @@ export const initSocket = (server: any) => {
     if (socket.data.userType === "client") {
       requestAsapBooking(socket, io);
       requestScheduleBooking(socket, io);
+      requestPoolingBooking(socket, io);
       getDriverLocation(socket, io);
       pickDriver(socket, io);
       cancelBooking(socket, io);

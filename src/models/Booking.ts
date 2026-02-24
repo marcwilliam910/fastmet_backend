@@ -257,9 +257,8 @@ bookingSchema.index({
   "bookingType.type": 1,
   "selectedVehicle.vehicleTypeId": 1,
   "selectedVehicle.variantId": 1,
-  requestedDrivers: 1,
-  "bookingType.value": 1,
   "pickUp.city": 1,
+  "bookingType.value": 1,
 });
 
 // 7. Requested drivers check: requestedDrivers array

@@ -5,7 +5,7 @@ const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY;
 interface AddressComponent {
   longText: string;
   shortText: string;
-  types: string[];
+  types?: string[];
 }
 
 interface PlacesApiResponse {
@@ -39,13 +39,13 @@ export const getCityFromPlaceId = async (
 
     // Try to find locality (city)
     let city = data.addressComponents?.find((c) =>
-      c.types.includes("locality"),
+      c.types?.includes("locality"),
     )?.longText;
 
     // Fallback to administrative_area_level_2 if locality not found
     if (!city) {
       city = data.addressComponents?.find((c) =>
-        c.types.includes("administrative_area_level_2"),
+        c.types?.includes("administrative_area_level_2"),
       )?.longText;
     }
 
