@@ -6,7 +6,8 @@ import { SOCKET_ROOMS } from "../../../utils/constants";
 import {
   canAcceptAsapBooking,
   canAcceptScheduledBooking,
-} from "../../../utils/helpers/bookingFeasibility";
+  refreshDriverBookings,
+} from "../../../utils/helpers/bookingHelpers";
 import mongoose from "mongoose";
 import { sendNotifToClient } from "../../../utils/pushNotifications";
 import DriverModel from "../../../models/Driver";
@@ -471,6 +472,42 @@ export const arrivedAtPickup = (socket: CustomSocket) => {
           type: "driver_arrived_at_pickup",
         },
       );
+    },
+  );
+};
+
+export const startDriving = (socket: CustomSocket) => {
+  const on = withErrorHandling(socket);
+  on(
+    "startDriving",
+    async (payload: { bookingId: string; driverId: string }) => {
+      socket.leave(SOCKET_ROOMS.AVAILABLE);
+    },
+  );
+};
+
+export const updateDriverState = (socket: CustomSocket) => {
+  const on = withErrorHandling(socket);
+
+  on(
+    "updateDriverState",
+    async ({
+      serviceAreas,
+      location,
+    }: {
+      serviceAreas: string[];
+      location: { lat: number; lng: number };
+    }) => {
+      if (!socket.rooms.has(SOCKET_ROOMS.ON_DUTY)) {
+        socket.emit("error", { message: "Driver must be on duty" });
+        return;
+      }
+
+      // Guaranteed order — no race condition
+      socket.data.serviceAreas = serviceAreas;
+      socket.data.location = location;
+
+      await refreshDriverBookings(socket, location);
     },
   );
 };

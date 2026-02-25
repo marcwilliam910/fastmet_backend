@@ -15,6 +15,8 @@ import {
   driverLocation,
   handleStartScheduledTrip,
   requestAcceptance,
+  startDriving,
+  updateDriverState,
 } from "./handlers/driver/booking";
 import {
   setDriverAvailable,
@@ -23,6 +25,7 @@ import {
 } from "./handlers/driver/duty";
 import jwt from "jsonwebtoken";
 import { chatHandler } from "./handlers/chat";
+import mongoose, { Schema } from "mongoose";
 
 // Extend Socket type to include custom data properties
 export interface CustomSocket extends Socket {
@@ -31,6 +34,9 @@ export interface CustomSocket extends Socket {
     userType: "driver" | "client";
     location?: { lat: number; lng: number };
     vehicleType?: string;
+    serviceAreas: string[];
+    vehicle: mongoose.Types.ObjectId;
+    vehicleVariant: mongoose.Types.ObjectId;
   };
 }
 
@@ -100,7 +106,9 @@ export const initSocket = (server: any) => {
       handleStartScheduledTrip(socket);
       requestAcceptance(socket, io);
       cancelOffer(socket, io);
+      startDriving(socket);
       arrivedAtPickup(socket);
+      updateDriverState(socket);
     }
 
     // Client-specific handlers

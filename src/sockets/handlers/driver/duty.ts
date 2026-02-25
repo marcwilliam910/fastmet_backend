@@ -7,7 +7,10 @@ import mongoose from "mongoose";
 import { sendNotifToClient } from "../../../utils/pushNotifications";
 import DriverModel from "../../../models/Driver";
 import { getLateBoundary } from "../../../utils/helpers/date";
-import { checkScheduleConflict } from "../../../utils/helpers/bookingFeasibility";
+import {
+  checkScheduleConflict,
+  refreshDriverBookings,
+} from "../../../utils/helpers/bookingHelpers";
 
 export const toggleOnDuty = (socket: CustomSocket) => {
   const on = withErrorHandling(socket);
@@ -36,6 +39,21 @@ export const toggleOnDuty = (socket: CustomSocket) => {
           return;
         }
 
+        // Fetch and cache driver data once on duty-start
+        const driver = await DriverModel.findById(socket.data.userId)
+          .select("serviceAreas vehicle vehicleVariant")
+          .lean();
+
+        if (!driver) {
+          socket.emit("error", { message: "You are not a driver" });
+          return;
+        }
+
+        if (!driver.vehicle) {
+          socket.emit("error", { message: "You have no vehicle assigned" });
+          return;
+        }
+
         // Join required socket rooms
         socket.join(SOCKET_ROOMS.ON_DUTY);
         socket.join(SOCKET_ROOMS.AVAILABLE);
@@ -47,6 +65,11 @@ export const toggleOnDuty = (socket: CustomSocket) => {
         // Store driver's session data
         socket.data.location = location;
         socket.data.vehicleType = vehicleType;
+        socket.data.serviceAreas = driver.serviceAreas || [];
+        socket.data.vehicle = driver.vehicle;
+        socket.data.vehicleVariant = driver.vehicleVariant;
+
+        console.log(socket.data);
 
         console.log(
           `✅ Driver ${socket.data.userId} is ON DUTY at`,
@@ -117,192 +140,13 @@ export const updateDriverLocation = (socket: CustomSocket) => {
   const on = withErrorHandling(socket);
 
   on("updateLocation", async (location: { lat: number; lng: number }) => {
-    // Driver must be on duty to update location
     if (!socket.rooms.has(SOCKET_ROOMS.ON_DUTY)) {
       socket.emit("error", { message: "Driver must be on duty" });
       return;
     }
 
     socket.data.location = location;
-    const vehicleType = socket.data.vehicleType;
-    const driverId = socket.data.userId;
-
-    // Defensive: If for some reason required fields aren't set
-    if (!vehicleType || !driverId) {
-      console.log("Invalid driver session");
-      socket.emit("error", { message: "Invalid driver session" });
-      return;
-    }
-    // Fetching driver's service areas, vehicle, and vehicleVariant
-    const driver = await DriverModel.findById(driverId)
-      .select("serviceAreas vehicle vehicleVariant")
-      .lean();
-    if (!driver) {
-      socket.emit("error", { message: "Driver not found" });
-      return;
-    }
-    const driverServiceAreas = driver.serviceAreas || [];
-
-    // Driver must have a vehicle assigned
-    if (!driver.vehicle) {
-      socket.emit("error", { message: "Driver has no vehicle assigned" });
-      return;
-    }
-
-    // Build the city filter based on driver's service areas
-    let cityFilter;
-
-    if (driverServiceAreas.includes("Metro Manila")) {
-      // Driver serves all cities - match ANY booking
-      cityFilter = {}; // No filter needed
-    } else {
-      // Driver only serves specific cities - match ONLY those cities (not "Metro Manila" unknown)
-      cityFilter = { "pickUp.city": { $in: driverServiceAreas } };
-    }
-
-    // Fetch ASAP and scheduled bookings in parallel
-    const [asapBookings, scheduledBookings, poolingBookings] =
-      await Promise.all([
-        BookingModel.find({
-          status: "searching",
-          "bookingType.type": "asap",
-          "selectedVehicle.vehicleTypeId": driver.vehicle,
-          "selectedVehicle.variantId": driver.vehicleVariant,
-        })
-          .sort({ createdAt: -1 })
-          .populate({
-            path: "customerId",
-            select: "fullName profilePictureUrl phoneNumber",
-          })
-          .populate({
-            path: "selectedVehicle.vehicleTypeId",
-            select: "name freeServices",
-          })
-          .lean(),
-        BookingModel.find({
-          status: "pending",
-          "bookingType.type": "schedule",
-          "selectedVehicle.vehicleTypeId": driver.vehicle,
-          "selectedVehicle.variantId": driver.vehicleVariant,
-          requestedDrivers: { $nin: [new mongoose.Types.ObjectId(driverId)] },
-          "bookingType.value": { $gte: getLateBoundary() },
-          ...cityFilter, // 🆕 Apply city filter here
-        })
-          .sort({ "bookingType.value": 1 })
-          .populate({
-            path: "customerId",
-            select: "fullName profilePictureUrl phoneNumber",
-          })
-          .populate({
-            path: "selectedVehicle.vehicleTypeId",
-            select: "name freeServices",
-          })
-          .lean(),
-        BookingModel.find({
-          status: "pending",
-          "bookingType.type": "pooling",
-          "selectedVehicle.vehicleTypeId": driver.vehicle,
-          "selectedVehicle.variantId": driver.vehicleVariant,
-          ...cityFilter,
-        })
-          .sort({ createdAt: -1 })
-          .populate({
-            path: "customerId",
-            select: "fullName profilePictureUrl phoneNumber",
-          })
-          .populate({
-            path: "selectedVehicle.vehicleTypeId",
-            select: "name freeServices",
-          })
-          .lean(),
-      ]);
-
-    const driverOfferedBookings = await BookingModel.find({
-      requestedDrivers: { $in: [new mongoose.Types.ObjectId(driverId)] },
-      status: "pending",
-      "bookingType.type": "schedule",
-      driverId: null,
-    }).lean();
-
-    console.log(
-      `🔍 Found ${asapBookings.length} ASAP bookings, ${scheduledBookings.length} scheduled bookings`,
-    );
-
-    // Filter ASAP bookings by proximity
-    const nearbyAsapBookings = asapBookings.filter((booking: any) => {
-      const distance = calculateDistance(
-        { lat: booking.pickUp.coords.lat, lng: booking.pickUp.coords.lng },
-        { lat: location.lat, lng: location.lng },
-      );
-      return distance <= (booking.currentRadiusKm || 5);
-    });
-
-    // Around line where you filter scheduled bookings
-    const eligibleScheduledBookings = scheduledBookings.filter(
-      (booking: any) => {
-        // Check schedule conflicts
-        for (const offeredBooking of driverOfferedBookings) {
-          const conflict = checkScheduleConflict(
-            {
-              startTime: booking.bookingType.value,
-              durationMinutes: booking.routeData.duration,
-            },
-            {
-              startTime: offeredBooking.bookingType.value,
-              durationMinutes: offeredBooking.routeData.duration,
-            },
-          );
-          if (conflict !== "none") return false;
-        }
-
-        return true;
-      },
-    );
-
-    console.log(
-      `✅ ${nearbyAsapBookings.length} ASAP bookings within radius, ` +
-        `${eligibleScheduledBookings.length} scheduled bookings in service areas`,
-    );
-
-    // Combine and format
-    const allEligibleBookings = [
-      ...nearbyAsapBookings,
-      ...eligibleScheduledBookings,
-      ...poolingBookings,
-    ];
-
-    const formattedBookings = allEligibleBookings.map((booking: any) => {
-      const temporaryRoom = `BOOKING_${booking._id}`;
-      socket.join(temporaryRoom);
-
-      const { customerId, selectedVehicle, ...rest } = booking;
-      const distance = calculateDistance(
-        { lat: booking.pickUp.coords.lat, lng: booking.pickUp.coords.lng },
-        { lat: location.lat, lng: location.lng },
-      );
-      return {
-        ...rest,
-        distanceFromPickup: distance,
-        client: {
-          id: customerId?._id,
-          name: customerId?.fullName,
-          profilePictureUrl: customerId?.profilePictureUrl,
-          phoneNumber: customerId?.phoneNumber,
-        },
-        selectedVehicle: {
-          freeServices: selectedVehicle?.vehicleTypeId?.freeServices || [],
-        },
-      };
-    });
-
-    console.log(
-      `📦 Driver ${socket.data.userId} sees ${formattedBookings.length} total bookings ` +
-        `(${nearbyAsapBookings.length} ASAP + ${eligibleScheduledBookings.length} scheduled) + (${poolingBookings.length} pooling)`,
-    );
-
-    socket.emit("pendingBookingsUpdated", {
-      bookings: formattedBookings,
-    });
+    await refreshDriverBookings(socket, location);
   });
 };
 
@@ -313,21 +157,16 @@ export const setDriverAvailable = (socket: CustomSocket) => {
     "setAvailability",
     async (data: { bookingId: string; clientId: string }) => {
       socket.join(SOCKET_ROOMS.AVAILABLE);
-      console.log(`✅ Driver ${socket.data.userId} joined AVAILABLE room`);
 
-      // bookingId and clientId must be present, just for defensive clarity
       if (!data.bookingId || !data.clientId) {
         socket.emit("error", { message: "Missing bookingId or clientId" });
         return;
       }
 
-      // Complete booking in DB
+      // Complete booking
       const updatedBooking = await BookingModel.findOneAndUpdate(
         { _id: data.bookingId },
-        {
-          status: "completed",
-          completedAt: new Date(),
-        },
+        { status: "completed", completedAt: new Date() },
         { new: true },
       );
 
@@ -336,185 +175,23 @@ export const setDriverAvailable = (socket: CustomSocket) => {
         return;
       }
 
-      // Send push notification to client
+      // Notify client
       await sendNotifToClient(
         data.clientId,
         "📦 Delivery Completed!",
         "Your package has been delivered successfully. Tap to view proof of delivery.",
-        {
-          type: "booking_completed",
-        },
+        { type: "booking_completed" },
       );
 
-      const location = socket.data.location;
-      const vehicleType = socket.data.vehicleType;
-      const driverId = socket.data.userId;
-
-      if (!location || !vehicleType || !driverId) {
+      // Reuse shared logic
+      if (!socket.data.location) {
         socket.emit("error", {
           message: "Driver not ready for availability update",
         });
         return;
       }
 
-      // Get driver's service areas, vehicle, and vehicleVariant
-      const driver = await DriverModel.findById(driverId)
-        .select("serviceAreas vehicle vehicleVariant")
-        .lean();
-
-      if (!driver) {
-        socket.emit("error", { message: "Driver not found" });
-        return;
-      }
-      const driverServiceAreas = driver.serviceAreas || [];
-
-      // Driver must have a vehicle assigned
-      if (!driver.vehicle) {
-        socket.emit("error", { message: "Driver has no vehicle assigned" });
-        return;
-      }
-
-      // Build the city filter based on driver's service areas
-      let cityFilter;
-
-      if (driverServiceAreas.includes("Metro Manila")) {
-        // Driver serves all cities - match ANY booking
-        cityFilter = {}; // No filter needed
-      } else {
-        // Driver only serves specific cities - match ONLY those cities (not "Metro Manila" unknown)
-        cityFilter = { "pickUp.city": { $in: driverServiceAreas } };
-      }
-
-      // Fetch eligible bookings in parallel
-      const [asapBookings, scheduledBookings, poolingBookings] =
-        await Promise.all([
-          BookingModel.find({
-            status: "searching",
-            "bookingType.type": "asap",
-            "selectedVehicle.vehicleTypeId": driver.vehicle,
-            "selectedVehicle.variantId": driver.vehicleVariant || null,
-          })
-            .sort({ createdAt: -1 })
-            .populate({
-              path: "customerId",
-              select: "fullName profilePictureUrl phoneNumber",
-            })
-            .populate({
-              path: "selectedVehicle.vehicleTypeId",
-              select: "name freeServices",
-            })
-            .lean(),
-          BookingModel.find({
-            status: "pending",
-            "bookingType.type": "schedule",
-            "selectedVehicle.vehicleTypeId": driver.vehicle,
-            "selectedVehicle.variantId": driver.vehicleVariant || null,
-            requestedDrivers: { $nin: [new mongoose.Types.ObjectId(driverId)] },
-            "bookingType.value": { $gte: getLateBoundary() },
-            ...cityFilter, // 🆕 Apply city filter here
-          })
-            .sort({ "bookingType.value": 1 })
-            .populate({
-              path: "customerId",
-              select: "fullName profilePictureUrl phoneNumber",
-            })
-            .populate({
-              path: "selectedVehicle.vehicleTypeId",
-              select: "name freeServices",
-            })
-            .lean(),
-          BookingModel.find({
-            status: "pending",
-            "bookingType.type": "pooling",
-            "selectedVehicle.vehicleTypeId": driver.vehicle,
-            "selectedVehicle.variantId": driver.vehicleVariant,
-            ...cityFilter,
-          })
-            .sort({ createdAt: -1 })
-            .populate({
-              path: "customerId",
-              select: "fullName profilePictureUrl phoneNumber",
-            })
-            .populate({
-              path: "selectedVehicle.vehicleTypeId",
-              select: "name freeServices",
-            })
-            .lean(),
-        ]);
-
-      const driverOfferedBookings = await BookingModel.find({
-        requestedDrivers: { $in: [new mongoose.Types.ObjectId(driverId)] },
-        status: "pending",
-        "bookingType.type": "schedule",
-        driverId: null,
-      }).lean();
-
-      // Filter (same logic as before)
-      const nearbyAsapBookings = asapBookings.filter((booking: any) => {
-        const distance = calculateDistance(
-          { lat: booking.pickUp.coords.lat, lng: booking.pickUp.coords.lng },
-          { lat: location.lat, lng: location.lng },
-        );
-        return distance <= (booking.currentRadiusKm || 5);
-      });
-
-      // Around line where you filter scheduled bookings
-      const eligibleScheduledBookings = scheduledBookings.filter(
-        (booking: any) => {
-          // Check schedule conflicts
-          for (const offeredBooking of driverOfferedBookings) {
-            const conflict = checkScheduleConflict(
-              {
-                startTime: booking.bookingType.value,
-                durationMinutes: booking.routeData.duration,
-              },
-              {
-                startTime: offeredBooking.bookingType.value,
-                durationMinutes: offeredBooking.routeData.duration,
-              },
-            );
-            if (conflict !== "none") return false;
-          }
-
-          return true;
-        },
-      );
-
-      const allEligibleBookings = [
-        ...nearbyAsapBookings,
-        ...eligibleScheduledBookings,
-        ...poolingBookings,
-      ];
-
-      const formattedBookings = allEligibleBookings.map((booking: any) => {
-        const { customerId, selectedVehicle, ...rest } = booking;
-        const distance = calculateDistance(
-          { lat: booking.pickUp.coords.lat, lng: booking.pickUp.coords.lng },
-          { lat: location.lat, lng: location.lng },
-        );
-        return {
-          ...rest,
-          distanceFromPickup: distance,
-          client: {
-            id: customerId?._id,
-            name: customerId?.fullName,
-            profilePictureUrl: customerId?.profilePictureUrl,
-            phoneNumber: customerId?.phoneNumber,
-          },
-          selectedVehicle: {
-            freeServices: selectedVehicle?.vehicleTypeId?.freeServices || [],
-          },
-        };
-      });
-
-      console.log(
-        `📦 Found ${formattedBookings.length} bookings for driver ${socket.data.userId} ` +
-          `(${nearbyAsapBookings.length} ASAP + ${eligibleScheduledBookings.length} scheduled)`,
-      );
-
-      socket.emit("pendingBookingsUpdated", {
-        bookings: formattedBookings,
-      });
+      await refreshDriverBookings(socket, socket.data.location);
     },
   );
 };

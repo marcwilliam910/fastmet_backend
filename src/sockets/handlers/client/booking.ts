@@ -414,40 +414,14 @@ export const requestScheduleBooking = (socket: CustomSocket, io: Server) => {
       `🔍 Found ${availableDriverSockets.length} available ${vehicleType} drivers`,
     );
 
-    // 6. Query drivers with matching service areas
-    const driverIds = availableDriverSockets.map((s) => s.data.userId);
-
-    let serviceAreaQuery;
-
-    if (pickupCity === "Metro Manila") {
-      serviceAreaQuery = { serviceAreas: "Metro Manila" };
-      console.log(
-        `⚠️ Rare case: Pickup city unknown, matching only "Metro Manila" drivers`,
-      );
-    } else {
-      serviceAreaQuery = {
-        $or: [{ serviceAreas: pickupCity }, { serviceAreas: "Metro Manila" }],
-      };
-    }
-
-    const drivers = await DriverModel.find({
-      _id: { $in: driverIds },
-      ...serviceAreaQuery,
-    })
-      .select("_id serviceAreas")
-      .lean();
-
-    console.log(
-      `✅ Found ${drivers.length} drivers servicing ${pickupCity} from database`,
-    );
-
-    const eligibleDriverIds = new Set(
-      drivers.map((driver) => driver._id.toString()),
-    );
-
-    const eligibleDrivers = availableDriverSockets.filter((driverSocket) =>
-      eligibleDriverIds.has(driverSocket.data.userId),
-    );
+    // 6. Filter by service area directly from socket.data — no DB query needed
+    const eligibleDrivers = availableDriverSockets.filter((s) => {
+      const areas: string[] = s.data.serviceAreas || [];
+      if (pickupCity === "Metro Manila") {
+        return areas.includes("Metro Manila");
+      }
+      return areas.includes(pickupCity) || areas.includes("Metro Manila");
+    });
 
     if (eligibleDrivers.length === 0) {
       socket.emit("no_drivers_available", {
@@ -618,40 +592,14 @@ export const requestPoolingBooking = (socket: CustomSocket, io: Server) => {
       `🔍 Found ${availableDriverSockets.length} available ${vehicleType} drivers`,
     );
 
-    // 6. Query drivers with matching service areas
-    const driverIds = availableDriverSockets.map((s) => s.data.userId);
-
-    let serviceAreaQuery;
-
-    if (pickupCity === "Metro Manila") {
-      serviceAreaQuery = { serviceAreas: "Metro Manila" };
-      console.log(
-        `⚠️ Rare case: Pickup city unknown, matching only "Metro Manila" drivers`,
-      );
-    } else {
-      serviceAreaQuery = {
-        $or: [{ serviceAreas: pickupCity }, { serviceAreas: "Metro Manila" }],
-      };
-    }
-
-    const drivers = await DriverModel.find({
-      _id: { $in: driverIds },
-      ...serviceAreaQuery,
-    })
-      .select("_id serviceAreas")
-      .lean();
-
-    console.log(
-      `✅ Found ${drivers.length} drivers servicing ${pickupCity} from database`,
-    );
-
-    const eligibleDriverIds = new Set(
-      drivers.map((driver) => driver._id.toString()),
-    );
-
-    const eligibleDrivers = availableDriverSockets.filter((driverSocket) =>
-      eligibleDriverIds.has(driverSocket.data.userId),
-    );
+    // 6. Filter by service area directly from socket.data — no DB query needed
+    const eligibleDrivers = availableDriverSockets.filter((s) => {
+      const areas: string[] = s.data.serviceAreas || [];
+      if (pickupCity === "Metro Manila") {
+        return areas.includes("Metro Manila");
+      }
+      return areas.includes(pickupCity) || areas.includes("Metro Manila");
+    });
 
     if (eligibleDrivers.length === 0) {
       socket.emit("no_drivers_available", {
