@@ -70,3 +70,32 @@ export type RequestedDriver = {
   totalBookings: number;
   profilePicture: string;
 };
+
+export type PoolingStopPayload = {
+  bookingId: string;
+  type: "pickup" | "dropoff";
+  label: string;
+  coords: { lat: number; lng: number };
+  order: number;
+  completed: boolean;
+  completedAt: null;
+};
+
+export type AcceptPoolingPayload = {
+  driverId: string;
+  bookingIds: string[];
+  stops: PoolingStopPayload[];
+  totalDistance: number;
+  totalDuration: number;
+};
+
+export type AddToPoolingPayload = {
+  driverId: string;
+  bookingId: string;
+  driverCoords: { lat: number; lng: number };
+};
+
+export type PoolingTripCompletedPayload = {
+  tripId: string;
+  driverId: string;
+};

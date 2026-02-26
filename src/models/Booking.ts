@@ -30,6 +30,7 @@ export interface IBooking extends Document {
     | "searching"
     | "scheduled"
     | "active"
+    | "picked_up"
     | "completed"
     | "cancelled";
   completedAt: Date | null;
@@ -133,6 +134,7 @@ const bookingSchema: Schema = new Schema<IBooking>(
         "searching",
         "scheduled",
         "active",
+        "picked_up",
         "completed",
         "cancelled",
       ],

@@ -682,6 +682,19 @@ export const pickDriver = (socket: CustomSocket, io: Server) => {
         `🚗 Customer attempting to pick driver ${driverId} for booking ${bookingId}`,
       );
 
+      const haveActiveBooking = await BookingModel.exists({
+        driverId: new mongoose.Types.ObjectId(driverId),
+        status: "active",
+      });
+
+      if (haveActiveBooking) {
+        console.log("Driver already has an active booking");
+        socket.emit("error", {
+          message: "You already has an active booking",
+        });
+        return;
+      }
+
       // Check if the booking exists and is pending (using lean for read-only check)
       const existingBooking = await BookingModel.findOne({
         _id: bookingId,

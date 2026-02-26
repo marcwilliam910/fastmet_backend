@@ -333,22 +333,23 @@ export const uploadReceipt: RequestHandler = async (req, res) => {
       );
 
       if (isPickup) {
-        // Update pickup images
         await BookingModel.findOneAndUpdate(
           { _id: bookingId },
           {
             "bookingImages.pickup.beforeImageUrl": results[0].url,
             "bookingImages.pickup.afterImageUrl": results[1].url,
+            status: "picked_up",
           },
           { new: true },
         );
       } else if (isDropoff) {
-        // Update dropoff images
         await BookingModel.findOneAndUpdate(
           { _id: bookingId },
           {
             "bookingImages.dropoff.receiptImageUrl": results[0].url,
             "bookingImages.dropoff.packageImageUrl": results[1].url,
+            status: "completed",
+            completedAt: new Date(),
           },
           { new: true },
         );

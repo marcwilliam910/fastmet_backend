@@ -11,6 +11,7 @@ import {
   checkScheduleConflict,
   refreshDriverBookings,
 } from "../../../utils/helpers/bookingHelpers";
+import PoolingTripModel from "../../../models/PoolingTrip";
 
 export const toggleOnDuty = (socket: CustomSocket) => {
   const on = withErrorHandling(socket);
@@ -77,23 +78,29 @@ export const toggleOnDuty = (socket: CustomSocket) => {
           `with vehicle: ${vehicleType}`,
         );
 
-        // Find driver's current active booking, if any
-        const activeBooking = await BookingModel.findOne({
-          status: "active",
-          driverId: new mongoose.Types.ObjectId(socket.data.userId),
-        })
-          .populate({
-            path: "customerId",
-            select: "fullName profilePictureUrl phoneNumber gender",
+        // Find active single booking AND active pooling trip in parallel
+        const [activeBooking, activePoolingTrip] = await Promise.all([
+          BookingModel.findOne({
+            status: { $in: ["active", "picked_up"] },
+            driverId: new mongoose.Types.ObjectId(socket.data.userId),
           })
-          .populate({
-            path: "selectedVehicle.vehicleTypeId",
-            select: "name freeServices",
-          })
-          .lean();
+            .populate({
+              path: "customerId",
+              select: "fullName profilePictureUrl phoneNumber gender",
+            })
+            .populate({
+              path: "selectedVehicle.vehicleTypeId",
+              select: "name freeServices",
+            })
+            .lean(),
+
+          PoolingTripModel.findOne({
+            driverId: new mongoose.Types.ObjectId(socket.data.userId),
+            status: "active",
+          }).lean(),
+        ]);
 
         let formattedActiveBooking = null;
-
         if (activeBooking && activeBooking.customerId) {
           const { customerId, selectedVehicle, ...rest } = activeBooking as any;
           formattedActiveBooking = {
@@ -111,9 +118,54 @@ export const toggleOnDuty = (socket: CustomSocket) => {
           };
         }
 
+        // Fetch full booking objects for pooling trip
+        let formattedPoolingTrip = null;
+        if (activePoolingTrip) {
+          const poolingBookings = await BookingModel.find({
+            _id: { $in: activePoolingTrip.bookingIds },
+          })
+            .populate({
+              path: "customerId",
+              select: "fullName profilePictureUrl phoneNumber gender",
+            })
+            .populate({
+              path: "selectedVehicle.vehicleTypeId",
+              select: "name freeServices",
+            })
+            .lean();
+
+          const formattedBookings = poolingBookings.map((b: any) => {
+            const { customerId, selectedVehicle, ...rest } = b;
+            return {
+              ...rest,
+              client: {
+                id: customerId._id,
+                name: customerId.fullName,
+                profilePictureUrl: customerId.profilePictureUrl,
+                phoneNumber: customerId.phoneNumber,
+                gender: customerId.gender,
+              },
+              selectedVehicle: {
+                freeServices:
+                  selectedVehicle?.vehicleTypeId?.freeServices || [],
+              },
+            };
+          });
+
+          formattedPoolingTrip = {
+            tripId: activePoolingTrip._id,
+            stops: activePoolingTrip.stops,
+            currentStopIndex: activePoolingTrip.currentStopIndex,
+            bookings: formattedBookings,
+            totalDistance: activePoolingTrip.totalDistance,
+            totalDuration: activePoolingTrip.totalDuration,
+          };
+        }
+
         socket.emit("dutyStatusChanged", {
           isOnDuty: true,
           activeBooking: formattedActiveBooking,
+          activePoolingTrip: formattedPoolingTrip, // ← new
         });
       } else {
         // Leave all general and vehicle-specific rooms

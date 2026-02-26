@@ -12,6 +12,17 @@ import mongoose from "mongoose";
 import { sendNotifToClient } from "../../../utils/pushNotifications";
 import DriverModel from "../../../models/Driver";
 import NotificationModel from "../../../models/Notification";
+import PoolingTripModel from "../../../models/PoolingTrip";
+import {
+  AcceptPoolingPayload,
+  AddToPoolingPayload,
+  PoolingTripCompletedPayload,
+} from "../../../types/booking";
+import {
+  cheapestInsertion,
+  formatPoolingBooking,
+  PoolingStop,
+} from "../../../utils/helpers/poolingHelper";
 
 export const driverLocation = (socket: CustomSocket, io: Server) => {
   socket.on(
@@ -198,6 +209,19 @@ export const requestAcceptance = (socket: CustomSocket, io: Server) => {
       if (!driverId || !bookingId || !clientUserId) {
         socket.emit("requestAcceptanceError", {
           message: "Missing required fields",
+          bookingId,
+        });
+        return;
+      }
+
+      const haveActiveBooking = await BookingModel.exists({
+        driverId: new mongoose.Types.ObjectId(driverId),
+        status: "active",
+      });
+
+      if (haveActiveBooking) {
+        socket.emit("requestAcceptanceError", {
+          message: "You still have an active trip, please complete it first",
           bookingId,
         });
         return;
@@ -510,4 +534,436 @@ export const updateDriverState = (socket: CustomSocket) => {
       await refreshDriverBookings(socket, location);
     },
   );
+};
+
+export const acceptPoolingBookings = (socket: CustomSocket, io: Server) => {
+  const on = withErrorHandling(socket);
+
+  on("acceptPoolingBookings", async (payload: AcceptPoolingPayload) => {
+    const { driverId, bookingIds, stops, totalDistance, totalDuration } =
+      payload;
+
+    /* ------------------------------------------------------------------ */
+    /* 1. VALIDATE PAYLOAD                                                  */
+    /* ------------------------------------------------------------------ */
+    if (
+      !driverId ||
+      !bookingIds?.length ||
+      !stops?.length ||
+      !totalDistance ||
+      !totalDuration
+    ) {
+      socket.emit("poolingError", { message: "Missing required fields" });
+      return;
+    }
+
+    if (bookingIds.length > 5) {
+      socket.emit("poolingError", {
+        message: "Maximum of 5 bookings allowed per pooling trip",
+      });
+      return;
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* 2. VALIDATE ALL BOOKINGS EXIST AND ARE STILL PENDING                */
+    /* ------------------------------------------------------------------ */
+    const bookingObjectIds = bookingIds.map(
+      (id) => new mongoose.Types.ObjectId(id),
+    );
+
+    const bookings = await BookingModel.find({
+      _id: { $in: bookingObjectIds },
+      status: "pending",
+      driverId: null,
+    })
+      .populate({
+        path: "customerId",
+        select: "fullName profilePictureUrl phoneNumber",
+      })
+      .populate({
+        path: "selectedVehicle.vehicleTypeId",
+        select: "name freeServices",
+      })
+      .lean();
+
+    if (bookings.length !== bookingIds.length) {
+      const foundIds = bookings.map((b) => b._id.toString());
+      const missingOrTaken = bookingIds.filter((id) => !foundIds.includes(id));
+
+      socket.emit("poolingError", {
+        message:
+          "One or more bookings are no longer available. Please refresh and try again.",
+        unavailableBookingIds: missingOrTaken,
+      });
+      return;
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* 3. CHECK DRIVER DOESN'T ALREADY HAVE AN ACTIVE BOOKING             */
+    /* ------------------------------------------------------------------ */
+    const [existingTrip, haveActiveBooking] = await Promise.all([
+      PoolingTripModel.exists({
+        driverId: new mongoose.Types.ObjectId(driverId),
+        status: "active",
+      }),
+      BookingModel.exists({
+        driverId: new mongoose.Types.ObjectId(driverId),
+        status: { $in: ["active", "picked_up"] },
+      }),
+    ]);
+
+    if (existingTrip || haveActiveBooking) {
+      socket.emit("poolingError", {
+        message:
+          "You already have an active trip or booking. Please complete it first.",
+      });
+      return;
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* 4. CREATE POOLING TRIP + BULK UPDATE BOOKINGS IN PARALLEL           */
+    /* ------------------------------------------------------------------ */
+    const driverObjectId = new mongoose.Types.ObjectId(driverId);
+
+    const [poolingTrip] = await Promise.all([
+      PoolingTripModel.create({
+        driverId: driverObjectId,
+        bookingIds: bookingObjectIds,
+        stops: stops.map((stop) => ({
+          ...stop,
+          bookingId: new mongoose.Types.ObjectId(stop.bookingId),
+        })),
+        currentStopIndex: 0,
+        status: "active",
+        totalDistance,
+        totalDuration,
+      }),
+      BookingModel.updateMany(
+        {
+          _id: { $in: bookingObjectIds },
+          status: "pending",
+          driverId: null,
+        },
+        {
+          $set: {
+            driverId: driverObjectId,
+            status: "active",
+          },
+        },
+      ),
+    ]);
+
+    console.log(
+      `✅ Pooling trip ${poolingTrip._id} created for driver ${driverId}`,
+    );
+
+    /* ------------------------------------------------------------------ */
+    /* 5. FORMAT BOOKINGS FOR FRONTEND                                      */
+    /* ------------------------------------------------------------------ */
+    const formattedBookings = bookings.map(formatPoolingBooking);
+
+    /* ------------------------------------------------------------------ */
+    /* 6. EMIT SUCCESS BACK TO DRIVER                                       */
+    /* ------------------------------------------------------------------ */
+    socket.emit("poolingTripStarted", {
+      tripId: poolingTrip._id,
+      stops: poolingTrip.stops,
+      currentStopIndex: 0,
+      bookings: formattedBookings, // ← full objects
+      totalDistance,
+      totalDuration,
+    });
+
+    console.log(
+      `📡 Emitted poolingTripStarted to driver ${driverId} with ${stops.length} stops`,
+    );
+  });
+};
+
+export const addToPoolingTrip = (socket: CustomSocket, io: Server) => {
+  const on = withErrorHandling(socket);
+
+  on("addToPoolingTrip", async (payload: AddToPoolingPayload) => {
+    const { driverId, bookingId, driverCoords } = payload;
+
+    /* ------------------------------------------------------------------ */
+    /* 1. VALIDATE PAYLOAD                                                  */
+    /* ------------------------------------------------------------------ */
+    if (!driverId || !bookingId || !driverCoords?.lat || !driverCoords?.lng) {
+      socket.emit("poolingError", { message: "Missing required fields" });
+      return;
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* 2. FETCH ACTIVE TRIP + NEW BOOKING IN PARALLEL                      */
+    /* ------------------------------------------------------------------ */
+    const driverObjectId = new mongoose.Types.ObjectId(driverId);
+    const bookingObjectId = new mongoose.Types.ObjectId(bookingId);
+
+    const [activeTrip, newBooking] = await Promise.all([
+      PoolingTripModel.findOne({
+        driverId: driverObjectId,
+        status: "active",
+      }),
+      BookingModel.findOne({
+        _id: bookingObjectId,
+        status: "pending",
+        driverId: null,
+      })
+        .populate({
+          path: "customerId",
+          select: "fullName profilePictureUrl phoneNumber",
+        })
+        .populate({
+          path: "selectedVehicle.vehicleTypeId",
+          select: "name freeServices",
+        })
+        .lean(),
+    ]);
+
+    /* ------------------------------------------------------------------ */
+    /* 3. VALIDATE TRIP EXISTS                                              */
+    /* ------------------------------------------------------------------ */
+    if (!activeTrip) {
+      socket.emit("poolingError", { message: "No active pooling trip found" });
+      return;
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* 4. VALIDATE BOOKING IS STILL AVAILABLE                              */
+    /* ------------------------------------------------------------------ */
+    if (!newBooking) {
+      socket.emit("poolingError", {
+        message: "Booking is no longer available",
+        bookingId,
+      });
+      return;
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* 5. CHECK CAPACITY                                                    */
+    /* ------------------------------------------------------------------ */
+    if (activeTrip.bookingIds.length >= 5) {
+      socket.emit("poolingError", {
+        message: "Trip is already at maximum capacity of 5 bookings",
+      });
+      return;
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* 6. GUARD AGAINST DUPLICATE                                           */
+    /* ------------------------------------------------------------------ */
+    const alreadyInTrip = activeTrip.bookingIds.some(
+      (id) => id.toString() === bookingId,
+    );
+
+    if (alreadyInTrip) {
+      socket.emit("poolingError", {
+        message: "This booking is already in your trip",
+        bookingId,
+      });
+      return;
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* 7. SPLIT STOPS INTO COMPLETED + REMAINING                           */
+    /* ------------------------------------------------------------------ */
+    const completedStops = activeTrip.stops
+      .filter((s) => s.completed)
+      .map((s) => ({
+        ...s,
+        bookingId: s.bookingId.toString(),
+        completedAt: s.completedAt ?? null,
+      }));
+
+    const remainingStops: PoolingStop[] = activeTrip.stops
+      .filter((s) => !s.completed)
+      .map((s) => ({
+        ...s,
+        bookingId: s.bookingId.toString(),
+        completedAt: s.completedAt ?? null,
+      }));
+
+    /* ------------------------------------------------------------------ */
+    /* 8. BUILD NEW STOP LABELS                                             */
+    /* ------------------------------------------------------------------ */
+    const newBookingIndex = activeTrip.bookingIds.length + 1;
+
+    const newPickup: Pick<PoolingStop, "bookingId" | "label" | "coords"> = {
+      bookingId,
+      label: `P${newBookingIndex}`,
+      coords: {
+        lat: newBooking.pickUp.coords.lat,
+        lng: newBooking.pickUp.coords.lng,
+      },
+    };
+
+    const newDropoff: Pick<PoolingStop, "bookingId" | "label" | "coords"> = {
+      bookingId,
+      label: `D${newBookingIndex}`,
+      coords: {
+        lat: newBooking.dropOff.coords.lat,
+        lng: newBooking.dropOff.coords.lng,
+      },
+    };
+
+    /* ------------------------------------------------------------------ */
+    /* 9. RUN CHEAPEST INSERTION                                            */
+    /* ------------------------------------------------------------------ */
+    const { stops: updatedRemainingStops, addedDistanceKm } = cheapestInsertion(
+      remainingStops,
+      driverCoords,
+      newPickup,
+      newDropoff,
+    );
+
+    /* ------------------------------------------------------------------ */
+    /* 10. MERGE COMPLETED + UPDATED REMAINING                             */
+    /* ------------------------------------------------------------------ */
+    const completedCount = completedStops.length;
+
+    const reorderedRemaining = updatedRemainingStops.map((stop, index) => ({
+      ...stop,
+      order: completedCount + index,
+    }));
+
+    const finalStops = [...completedStops, ...reorderedRemaining].map((s) => ({
+      ...s,
+      bookingId: new mongoose.Types.ObjectId(s.bookingId),
+    }));
+
+    /* ------------------------------------------------------------------ */
+    /* 11. UPDATE TRIP + BOOKING STATUS IN PARALLEL                        */
+    /* ------------------------------------------------------------------ */
+    const [updatedTrip] = await Promise.all([
+      PoolingTripModel.findByIdAndUpdate(
+        activeTrip._id,
+        {
+          $set: { stops: finalStops },
+          $push: { bookingIds: bookingObjectId },
+        },
+        { new: true },
+      ),
+      BookingModel.findByIdAndUpdate(bookingObjectId, {
+        $set: {
+          driverId: driverObjectId,
+          status: "active",
+        },
+      }),
+    ]);
+
+    if (!updatedTrip) {
+      socket.emit("poolingError", {
+        message: "Failed to update trip. Please try again.",
+      });
+      return;
+    }
+
+    console.log(
+      `✅ Booking ${bookingId} added to pooling trip ${activeTrip._id}`,
+    );
+
+    /* ------------------------------------------------------------------ */
+    /* 12. FORMAT NEW BOOKING + EMIT                                        */
+    /* ------------------------------------------------------------------ */
+    const formattedNewBooking = formatPoolingBooking(newBooking);
+
+    socket.emit("poolingTripUpdated", {
+      tripId: updatedTrip._id,
+      stops: updatedTrip.stops,
+      currentStopIndex: activeTrip.currentStopIndex,
+      addedDistanceKm: Math.round((addedDistanceKm / 1000) * 10) / 10,
+      newBookingId: bookingId,
+      newBooking: formattedNewBooking, // ← full object
+    });
+  });
+};
+
+export const poolingTripCompleted = (socket: CustomSocket, io: Server) => {
+  const on = withErrorHandling(socket);
+
+  on("poolingTripCompleted", async (payload: PoolingTripCompletedPayload) => {
+    const { tripId, driverId } = payload;
+
+    /* ------------------------------------------------------------------ */
+    /* 1. VALIDATE PAYLOAD                                                  */
+    /* ------------------------------------------------------------------ */
+    if (!tripId || !driverId) {
+      socket.emit("poolingError", { message: "Missing required fields" });
+      return;
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* 2. FETCH TRIP AND VALIDATE OWNERSHIP                                 */
+    /* ------------------------------------------------------------------ */
+    const trip = await PoolingTripModel.findOne({
+      _id: new mongoose.Types.ObjectId(tripId),
+      driverId: new mongoose.Types.ObjectId(driverId),
+      status: "active",
+    }).lean();
+
+    if (!trip) {
+      socket.emit("poolingError", {
+        message: "Active pooling trip not found",
+      });
+      return;
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* 3. VERIFY ALL STOPS ARE COMPLETED                                    */
+    /* Safety guard — all stops must be done before trip can complete      */
+    /* ------------------------------------------------------------------ */
+    const hasIncompleteStops = trip.stops.some((s) => !s.completed);
+
+    if (hasIncompleteStops) {
+      socket.emit("poolingError", {
+        message: "Not all stops have been completed",
+      });
+      return;
+    }
+
+    const completedAt = new Date();
+
+    /* ------------------------------------------------------------------ */
+    /* 4. COMPLETE TRIP + ALL BOOKINGS IN PARALLEL                         */
+    /* ------------------------------------------------------------------ */
+    await Promise.all([
+      // Mark pooling trip as completed
+      PoolingTripModel.findByIdAndUpdate(tripId, {
+        status: "completed",
+        completedAt,
+      }),
+
+      // Mark all bookings as completed
+      // Note: individual bookings may already be "completed" from
+      // the uploadReceipt endpoint — updateMany is idempotent here
+      BookingModel.updateMany(
+        {
+          _id: { $in: trip.bookingIds },
+          driverId: new mongoose.Types.ObjectId(driverId),
+        },
+        {
+          status: "completed",
+          completedAt,
+        },
+      ),
+    ]);
+
+    console.log(
+      `✅ Pooling trip ${tripId} completed for driver ${driverId} with ${trip.bookingIds.length} bookings`,
+    );
+
+    /* ------------------------------------------------------------------ */
+    /* 5. EMIT CONFIRMATION BACK TO DRIVER                                  */
+    /* ------------------------------------------------------------------ */
+    socket.emit("poolingTripCompletedConfirmed", {
+      tripId,
+      completedAt,
+      totalBookings: trip.bookingIds.length,
+    });
+
+    console.log(
+      `📡 Emitted poolingTripCompletedConfirmed to driver ${driverId}`,
+    );
+  });
 };
