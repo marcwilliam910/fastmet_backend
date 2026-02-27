@@ -34,7 +34,7 @@ export const driverLocation = (socket: CustomSocket, io: Server) => {
     }: {
       clientUserId: string;
       bookingId: string;
-      driverLoc: { lat: number; lng: number; heading: number };
+      driverLoc: { lat: number; lng: number };
     }) => {
       // Early validation
       if (
@@ -42,8 +42,7 @@ export const driverLocation = (socket: CustomSocket, io: Server) => {
         !clientUserId ||
         !bookingId ||
         typeof driverLoc.lat !== "number" ||
-        typeof driverLoc.lng !== "number" ||
-        typeof driverLoc.heading !== "number"
+        typeof driverLoc.lng !== "number"
       ) {
         return;
       }

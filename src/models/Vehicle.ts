@@ -6,12 +6,20 @@ interface IPricingTier {
   pricePerKm: number;
 }
 
-// Add search configuration interface
+interface IPoolingConfig {
+  maxRequests: number;
+  maxDetourPercent: number;
+  maxTotalDistanceKm: number;
+  maxTotalTimeMinutes: number;
+}
+
+// Search configuration interface
 export interface ISearchConfig {
   initialRadiusKm: number;
   incrementKm: number;
   maxRadiusKm: number;
   intervalMs: number;
+  pooling: IPoolingConfig | null; // null = vehicle doesn't support pooling
 }
 
 export interface ILoadVariant {
@@ -23,25 +31,25 @@ export interface ILoadVariant {
 }
 
 interface IService {
-  key: string; // extra_helper, extra_waiting_time, special_help, etc.
-  name: string; // Display name: "Extra Helper", "Extra Waiting Time"
-  desc: string; // Description of what this service includes
-  price: number; // Price in PHP (0 for free services)
-  unit: string; // "per person", "per 15 minutes", "per service", etc.
-  isQuantifiable: boolean; // true if user can request multiple (like extra helpers), false for one-time services
-  maxQuantity?: number; // Optional: max quantity user can request (e.g., max 5 helpers)
+  key: string;
+  name: string;
+  desc: string;
+  price: number;
+  unit: string;
+  isQuantifiable: boolean;
+  maxQuantity?: number;
   isActive: boolean;
 }
 
 export interface IVehicleType extends Document {
-  key: string; // motorcycle, sedan, l300, closed_van, wing_van
-  name: string; // UI display
-  imageUrl: string; // Cloudinary
-  desc: string; // Description of the vehicle type
+  key: string;
+  name: string;
+  imageUrl: string;
+  desc: string;
   variants: ILoadVariant[];
   freeServices: IService[];
   paidServices: IService[];
-  searchConfig: ISearchConfig; // Add this field
+  searchConfig: ISearchConfig;
   isActive: boolean;
 }
 
@@ -103,7 +111,35 @@ const serviceSchema = new Schema<IService>(
   { _id: false },
 );
 
-// Add search config schema
+const poolingConfigSchema = new Schema<IPoolingConfig>(
+  {
+    maxRequests: {
+      type: Number,
+      required: true,
+      min: 1,
+      max: 10,
+    },
+    maxDetourPercent: {
+      type: Number,
+      required: true,
+      min: 0.01,
+      max: 1,
+    },
+    maxTotalDistanceKm: {
+      type: Number,
+      required: true,
+      min: 1,
+    },
+    maxTotalTimeMinutes: {
+      type: Number,
+      required: true,
+      min: 1,
+    },
+  },
+  { _id: false },
+);
+
+// Search config schema with pooling
 const searchConfigSchema = new Schema<ISearchConfig>(
   {
     initialRadiusKm: {
@@ -125,6 +161,10 @@ const searchConfigSchema = new Schema<ISearchConfig>(
       type: Number,
       required: true,
       min: 1000,
+    },
+    pooling: {
+      type: poolingConfigSchema,
+      default: null,
     },
   },
   { _id: false },

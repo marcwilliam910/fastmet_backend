@@ -8,6 +8,7 @@ import {
   uploadWatermarkedImageToCloudinary,
 } from "../../services/cloudinaryService";
 import { getLateBoundary } from "../../utils/helpers/date";
+import PoolingTripModel from "../../models/PoolingTrip";
 
 export const getBookings: RequestHandler = async (req, res) => {
   const driverId = getUserId(req);
@@ -340,7 +341,22 @@ export const uploadReceipt: RequestHandler = async (req, res) => {
             "bookingImages.pickup.afterImageUrl": results[1].url,
             status: "picked_up",
           },
-          { new: true },
+        );
+
+        await PoolingTripModel.findOneAndUpdate(
+          {
+            bookingIds: bookingId,
+            status: "active",
+            "stops.bookingId": bookingId,
+            "stops.type": "pickup",
+          },
+          {
+            $set: {
+              "stops.$.completed": true,
+              "stops.$.completedAt": new Date(),
+            },
+            $inc: { currentStopIndex: 1 }, // ← advance to next stop
+          },
         );
       } else if (isDropoff) {
         await BookingModel.findOneAndUpdate(
@@ -351,7 +367,22 @@ export const uploadReceipt: RequestHandler = async (req, res) => {
             status: "completed",
             completedAt: new Date(),
           },
-          { new: true },
+        );
+
+        await PoolingTripModel.findOneAndUpdate(
+          {
+            bookingIds: bookingId,
+            status: "active",
+            "stops.bookingId": bookingId,
+            "stops.type": "dropoff",
+          },
+          {
+            $set: {
+              "stops.$.completed": true,
+              "stops.$.completedAt": new Date(),
+            },
+            $inc: { currentStopIndex: 1 }, // ← advance to next stop
+          },
         );
       }
     }

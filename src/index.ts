@@ -30,7 +30,7 @@ import bookingTypeRoute from "./routes/bookingTypeRoute";
 import { authenticateJWT } from "./middlewares/verifyToken";
 import { shutdownWorkers, startWorkers } from "./workers/bootstrap";
 import { syncIndexes } from "./scripts/syncIndexes";
-import { seedBookingTypes } from "./migrate";
+import { populate } from "./migrate";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -109,7 +109,7 @@ mongoose
     console.log("MongoDB connected");
 
     // await syncIndexes();
-
+    // await populate();
     // await seedBookingTypes();
 
     server.listen(PORT, () => {
