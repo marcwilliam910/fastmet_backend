@@ -19,6 +19,7 @@ export interface NotificationJobData {
 export const isValidPushToken = (token: string) => Expo.isExpoPushToken(token);
 
 const enqueueNotification = async (payload: NotificationJobData) => {
+  console.log("🚨 Enqueuing notification job", payload);
   const jobId = `notif-${payload.userType}-${payload.userId}-${Date.now()}`;
   const job = await notificationQueue.add("send", payload, { jobId, delay: 0 });
   return { jobId: job.id };

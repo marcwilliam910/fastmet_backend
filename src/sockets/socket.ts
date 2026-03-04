@@ -10,6 +10,7 @@ import {
 } from "./handlers/client/booking";
 import {
   acceptPoolingBookings,
+  addToPoolingTrip,
   arrivedAtPickup,
   cancelOffer,
   // acceptBooking,
@@ -19,6 +20,7 @@ import {
   requestAcceptance,
   startDriving,
   updateDriverState,
+  updatePoolingLocation,
 } from "./handlers/driver/booking";
 import {
   setDriverAvailable,
@@ -112,7 +114,9 @@ export const initSocket = (server: any) => {
       arrivedAtPickup(socket);
       updateDriverState(socket);
       acceptPoolingBookings(socket, io);
+      addToPoolingTrip(socket, io);
       poolingTripCompleted(socket, io);
+      updatePoolingLocation(socket);
     }
 
     // Client-specific handlers

@@ -11,6 +11,8 @@ interface IPoolingConfig {
   maxDetourPercent: number;
   maxTotalDistanceKm: number;
   maxTotalTimeMinutes: number;
+  basePickupRadiusKm: number;
+  pickupRadiusGrowthPercent: number;
 }
 
 // Search configuration interface
@@ -134,6 +136,17 @@ const poolingConfigSchema = new Schema<IPoolingConfig>(
       type: Number,
       required: true,
       min: 1,
+    },
+    basePickupRadiusKm: {
+      type: Number,
+      required: true,
+      min: 0.1,
+    },
+    pickupRadiusGrowthPercent: {
+      type: Number,
+      required: true,
+      min: 0.01,
+      max: 1,
     },
   },
   { _id: false },

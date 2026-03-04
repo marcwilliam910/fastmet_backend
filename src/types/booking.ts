@@ -87,15 +87,32 @@ export type AcceptPoolingPayload = {
   stops: PoolingStopPayload[];
   totalDistance: number;
   totalDuration: number;
+  maxRequests: number;
 };
 
 export type AddToPoolingPayload = {
   driverId: string;
   bookingId: string;
   driverCoords: { lat: number; lng: number };
+  maxRequests: number;
 };
 
 export type PoolingTripCompletedPayload = {
   tripId: string;
   driverId: string;
+};
+
+export type PoolingConfig = {
+  maxRequests: number;
+  maxDetourPercent: number;
+  maxTotalDistanceKm: number;
+  maxTotalTimeMinutes: number;
+  basePickupRadiusKm: number;
+  pickupRadiusGrowthPercent: number;
+};
+
+export type UpdatePoolingLocationPayload = {
+  lat: number;
+  lng: number;
+  poolingConfig: PoolingConfig;
 };

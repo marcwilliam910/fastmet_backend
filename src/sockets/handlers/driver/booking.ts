@@ -17,12 +17,17 @@ import {
   AcceptPoolingPayload,
   AddToPoolingPayload,
   PoolingTripCompletedPayload,
+  UpdatePoolingLocationPayload,
 } from "../../../types/booking";
 import {
-  cheapestInsertion,
+  cheapestInsertionMidTrip,
   formatPoolingBooking,
+  mapboxOptimizedMidTrip,
+  OptimizedStop,
   PoolingStop,
 } from "../../../utils/helpers/poolingHelper";
+import { VehicleType } from "../../../models/Vehicle";
+import { calculateDistance } from "../../../utils/helpers/distanceCalculator";
 
 export const driverLocation = (socket: CustomSocket, io: Server) => {
   socket.on(
@@ -539,8 +544,14 @@ export const acceptPoolingBookings = (socket: CustomSocket, io: Server) => {
   const on = withErrorHandling(socket);
 
   on("acceptPoolingBookings", async (payload: AcceptPoolingPayload) => {
-    const { driverId, bookingIds, stops, totalDistance, totalDuration } =
-      payload;
+    const {
+      driverId,
+      bookingIds,
+      stops,
+      totalDistance,
+      totalDuration,
+      maxRequests,
+    } = payload;
 
     /* ------------------------------------------------------------------ */
     /* 1. VALIDATE PAYLOAD                                                  */
@@ -556,9 +567,9 @@ export const acceptPoolingBookings = (socket: CustomSocket, io: Server) => {
       return;
     }
 
-    if (bookingIds.length > 5) {
+    if (bookingIds.length > maxRequests) {
       socket.emit("poolingError", {
-        message: "Maximum of 5 bookings allowed per pooling trip",
+        message: `You can only accept up to ${maxRequests} bookings at a time`,
       });
       return;
     }
@@ -673,6 +684,19 @@ export const acceptPoolingBookings = (socket: CustomSocket, io: Server) => {
       totalDuration,
     });
 
+    await Promise.all(
+      formattedBookings.map((booking) =>
+        sendNotifToClient(
+          booking.client.id,
+          `Driver accepted your pooling booking and ${stops.length} other booking${stops.length !== 1 ? "s" : ""}.`,
+          "Your driver has started the trip and is on the way!",
+          {
+            type: "pooling_trip_accepted",
+          },
+        ),
+      ),
+    );
+
     console.log(
       `📡 Emitted poolingTripStarted to driver ${driverId} with ${stops.length} stops`,
     );
@@ -683,7 +707,7 @@ export const addToPoolingTrip = (socket: CustomSocket, io: Server) => {
   const on = withErrorHandling(socket);
 
   on("addToPoolingTrip", async (payload: AddToPoolingPayload) => {
-    const { driverId, bookingId, driverCoords } = payload;
+    const { driverId, bookingId, driverCoords, maxRequests } = payload;
 
     /* ------------------------------------------------------------------ */
     /* 1. VALIDATE PAYLOAD                                                  */
@@ -703,7 +727,7 @@ export const addToPoolingTrip = (socket: CustomSocket, io: Server) => {
       PoolingTripModel.findOne({
         driverId: driverObjectId,
         status: "active",
-      }),
+      }).lean(),
       BookingModel.findOne({
         _id: bookingObjectId,
         status: "pending",
@@ -742,9 +766,9 @@ export const addToPoolingTrip = (socket: CustomSocket, io: Server) => {
     /* ------------------------------------------------------------------ */
     /* 5. CHECK CAPACITY                                                    */
     /* ------------------------------------------------------------------ */
-    if (activeTrip.bookingIds.length >= 5) {
+    if (activeTrip.bookingIds.length >= maxRequests) {
       socket.emit("poolingError", {
-        message: "Trip is already at maximum capacity of 5 bookings",
+        message: `Trip is already at maximum capacity of ${maxRequests} bookings`,
       });
       return;
     }
@@ -767,20 +791,28 @@ export const addToPoolingTrip = (socket: CustomSocket, io: Server) => {
     /* ------------------------------------------------------------------ */
     /* 7. SPLIT STOPS INTO COMPLETED + REMAINING                           */
     /* ------------------------------------------------------------------ */
-    const completedStops = activeTrip.stops
-      .filter((s) => s.completed)
-      .map((s) => ({
-        ...s,
-        bookingId: s.bookingId.toString(),
-        completedAt: s.completedAt ?? null,
-      }));
-
     const remainingStops: PoolingStop[] = activeTrip.stops
       .filter((s) => !s.completed)
       .map((s) => ({
         ...s,
         bookingId: s.bookingId.toString(),
         completedAt: s.completedAt ?? null,
+        coords: {
+          lat: Number(s.coords.lat),
+          lng: Number(s.coords.lng),
+        },
+      }));
+
+    const completedStops = activeTrip.stops
+      .filter((s) => s.completed)
+      .map((s) => ({
+        ...s,
+        bookingId: s.bookingId.toString(),
+        completedAt: s.completedAt ?? null,
+        coords: {
+          lat: Number(s.coords.lat),
+          lng: Number(s.coords.lng),
+        },
       }));
 
     /* ------------------------------------------------------------------ */
@@ -807,14 +839,32 @@ export const addToPoolingTrip = (socket: CustomSocket, io: Server) => {
     };
 
     /* ------------------------------------------------------------------ */
-    /* 9. RUN CHEAPEST INSERTION                                            */
+    /* 9. RUN MAPBOX OPTIMIZED TRIPS FOR UPDATED ROUTE                     */
     /* ------------------------------------------------------------------ */
-    const { stops: updatedRemainingStops, addedDistanceKm } = cheapestInsertion(
-      remainingStops,
-      driverCoords,
-      newPickup,
-      newDropoff,
-    );
+    let updatedRemainingStops: OptimizedStop[];
+    let newTotalDistance: number;
+    let newTotalDuration: number;
+
+    try {
+      const optimized = await mapboxOptimizedMidTrip(
+        driverCoords,
+        remainingStops,
+        newPickup,
+        newDropoff,
+      );
+      updatedRemainingStops = optimized.stops;
+      newTotalDistance = optimized.totalDistanceKm;
+      newTotalDuration = optimized.totalDurationMinutes;
+    } catch (err) {
+      console.error(
+        "Mapbox optimization failed, rejecting addToPoolingTrip:",
+        err,
+      );
+      socket.emit("poolingError", {
+        message: "Failed to optimize route. Please try again.",
+      });
+      return;
+    }
 
     /* ------------------------------------------------------------------ */
     /* 10. MERGE COMPLETED + UPDATED REMAINING                             */
@@ -831,26 +881,28 @@ export const addToPoolingTrip = (socket: CustomSocket, io: Server) => {
       bookingId: new mongoose.Types.ObjectId(s.bookingId),
     }));
 
-    /* ------------------------------------------------------------------ */
-    /* 11. UPDATE TRIP + BOOKING STATUS IN PARALLEL                        */
-    /* ------------------------------------------------------------------ */
+    /* 11. UPDATE TRIP */
     const [updatedTrip] = await Promise.all([
       PoolingTripModel.findByIdAndUpdate(
         activeTrip._id,
         {
-          $set: { stops: finalStops },
+          $set: {
+            stops: finalStops,
+            totalDistance: newTotalDistance,
+            totalDuration: newTotalDuration,
+          },
           $push: { bookingIds: bookingObjectId },
         },
         { new: true },
-      ),
+      ).lean(),
       BookingModel.findByIdAndUpdate(bookingObjectId, {
-        $set: {
-          driverId: driverObjectId,
-          status: "active",
-        },
+        $set: { driverId: driverObjectId, status: "active" },
       }),
     ]);
 
+    /* ------------------------------------------------------------------ */
+    /* 12. FORMAT NEW BOOKING + EMIT                                        */
+    /* ------------------------------------------------------------------ */
     if (!updatedTrip) {
       socket.emit("poolingError", {
         message: "Failed to update trip. Please try again.",
@@ -858,23 +910,34 @@ export const addToPoolingTrip = (socket: CustomSocket, io: Server) => {
       return;
     }
 
+    const formattedNewBooking = formatPoolingBooking(newBooking);
+
+    const addedDistanceKm = newTotalDistance - activeTrip.totalDistance;
+    const addedDurationMinutes = newTotalDuration - activeTrip.totalDuration;
+
     console.log(
       `✅ Booking ${bookingId} added to pooling trip ${activeTrip._id}`,
     );
 
-    /* ------------------------------------------------------------------ */
-    /* 12. FORMAT NEW BOOKING + EMIT                                        */
-    /* ------------------------------------------------------------------ */
-    const formattedNewBooking = formatPoolingBooking(newBooking);
-
     socket.emit("poolingTripUpdated", {
-      tripId: updatedTrip._id,
-      stops: updatedTrip.stops,
+      tripId: updatedTrip._id.toString(),
+      stops: updatedTrip.stops.map((s) => ({
+        ...s,
+        bookingId: s.bookingId.toString(),
+      })),
       currentStopIndex: activeTrip.currentStopIndex,
-      addedDistanceKm: Math.round((addedDistanceKm / 1000) * 10) / 10,
+      addedDistanceKm: Math.round(addedDistanceKm * 10) / 10,
+      addedDurationMinutes: Math.round(addedDurationMinutes),
       newBookingId: bookingId,
-      newBooking: formattedNewBooking, // ← full object
+      newBooking: formattedNewBooking,
     });
+
+    await sendNotifToClient(
+      formattedNewBooking.client.id,
+      `Driver accepted your pooling booking.`,
+      "Please wait for the driver to arrive at your pickup location.",
+      { type: "pooling_trip_accepted" },
+    );
   });
 };
 
@@ -964,5 +1027,159 @@ export const poolingTripCompleted = (socket: CustomSocket, io: Server) => {
     console.log(
       `📡 Emitted poolingTripCompletedConfirmed to driver ${driverId}`,
     );
+  });
+};
+
+export const updatePoolingLocation = (socket: CustomSocket) => {
+  const on = withErrorHandling(socket);
+
+  on("updatePoolingLocation", async (data: UpdatePoolingLocationPayload) => {
+    const { lat, lng, poolingConfig } = data;
+    const driverId = socket.data.userId;
+
+    console.log("updatePoolingLocation called: ", data);
+
+    /* 1. FETCH ACTIVE TRIP */
+    const activeTrip = await PoolingTripModel.findOne({
+      driverId: new mongoose.Types.ObjectId(driverId),
+      status: "active",
+    }).lean();
+
+    if (!activeTrip) return;
+
+    /* 2. CAPACITY CHECK */
+    if (activeTrip.bookingIds.length >= poolingConfig.maxRequests) return;
+
+    /* 3. GET REMAINING STOPS */
+    const remainingStops = activeTrip.stops
+      .filter((s) => !s.completed)
+      .sort((a, b) => a.order - b.order);
+
+    if (remainingStops.length === 0) return;
+
+    /* 4. CALCULATE REMAINING DISTANCE */
+    const ROAD_FACTOR = 1.35;
+
+    const allPoints = [
+      { lat, lng },
+      ...remainingStops.map((s) => ({ lat: s.coords.lat, lng: s.coords.lng })),
+    ];
+
+    let remainingDistanceKm = 0;
+    for (let i = 0; i < allPoints.length - 1; i++) {
+      remainingDistanceKm += calculateDistance(allPoints[i], allPoints[i + 1]);
+    }
+    remainingDistanceKm *= ROAD_FACTOR;
+
+    /* 5. DYNAMIC PICKUP RADIUS */
+    const pickupRadiusKm =
+      poolingConfig.basePickupRadiusKm +
+      remainingDistanceKm * poolingConfig.pickupRadiusGrowthPercent;
+
+    /* 6. FETCH PENDING POOLING BOOKINGS — same vehicle type only, no city filter */
+    const pendingBookings = await BookingModel.find({
+      status: "pending",
+      "bookingType.type": "pooling",
+      "selectedVehicle.vehicleTypeId": socket.data.vehicle,
+      "selectedVehicle.variantId": socket.data.vehicleVariant,
+      _id: { $nin: activeTrip.bookingIds },
+      driverId: null,
+    }).lean();
+
+    console.log(pendingBookings);
+    if (pendingBookings.length === 0) return;
+
+    /* 7. FORMAT REMAINING STOPS */
+    const formattedRemaining: PoolingStop[] = remainingStops.map((s) => ({
+      bookingId: s.bookingId.toString(),
+      type: s.type,
+      label: s.label,
+      coords: s.coords,
+      order: s.order,
+      completed: s.completed,
+      completedAt: s.completedAt ?? null,
+    }));
+
+    /* 8. CHECK CONDITIONS PER BOOKING */
+    for (const booking of pendingBookings) {
+      // Condition 1 — pickup within dynamic radius
+      const distanceToPickupKm = calculateDistance(
+        { lat, lng },
+        { lat: booking.pickUp.coords.lat, lng: booking.pickUp.coords.lng },
+      );
+
+      if (distanceToPickupKm > pickupRadiusKm) continue;
+
+      // Condition 2 — cheapest insertion detour check
+      const newPickup = {
+        bookingId: booking._id.toString(),
+        label: `P${activeTrip.bookingIds.length + 1}`,
+        coords: {
+          lat: booking.pickUp.coords.lat,
+          lng: booking.pickUp.coords.lng,
+        },
+      };
+
+      const newDropoff = {
+        bookingId: booking._id.toString(),
+        label: `D${activeTrip.bookingIds.length + 1}`,
+        coords: {
+          lat: booking.dropOff.coords.lat,
+          lng: booking.dropOff.coords.lng,
+        },
+      };
+      const { addedDistanceKm, addedDurationMinutes } =
+        cheapestInsertionMidTrip(
+          formattedRemaining,
+          { lat, lng },
+          newPickup,
+          newDropoff,
+        );
+
+      console.log("remainingDistanceKm:", remainingDistanceKm);
+      console.log("addedDistanceKm:", addedDistanceKm);
+      console.log("detourPercent:", addedDistanceKm / remainingDistanceKm);
+      console.log("maxDetourPercent:", poolingConfig.maxDetourPercent);
+      console.log("remainingStops count:", remainingStops.length);
+
+      // Condition 2 — detour percent vs remaining distance
+      if (
+        activeTrip.totalDistance > 0 &&
+        addedDistanceKm / activeTrip.totalDistance >
+          poolingConfig.maxDetourPercent
+      ) {
+        console.log("detour too high");
+        continue;
+      }
+
+      // Condition 3 — total distance ceiling
+      if (
+        activeTrip.totalDistance + addedDistanceKm >
+        poolingConfig.maxTotalDistanceKm
+      ) {
+        console.log("total distance too high");
+        continue;
+      }
+
+      // Condition 4 — total duration ceiling
+      if (
+        activeTrip.totalDuration + addedDurationMinutes >
+        poolingConfig.maxTotalTimeMinutes
+      ) {
+        console.log("total duration too high");
+        continue;
+      }
+
+      // All conditions passed — emit to driver
+      socket.emit("incomingPoolingRequest", {
+        bookingId: booking._id.toString(),
+        addedDistanceKm: Math.round(addedDistanceKm * 10) / 10,
+        addedDurationMinutes: Math.round(addedDurationMinutes),
+        pickupCoords: booking.pickUp.coords,
+        dropoffCoords: booking.dropOff.coords,
+        pickupAddress: booking.pickUp.address,
+        dropoffAddress: booking.dropOff.address,
+      });
+    }
   });
 };

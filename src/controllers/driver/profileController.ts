@@ -1,6 +1,5 @@
 import { RequestHandler } from "express";
 import DriverModel from "../../models/Driver";
-import Driver from "../../models/Driver";
 import { getUserId } from "../../utils/helpers/getUserId";
 import mongoose from "mongoose";
 import {
@@ -9,6 +8,7 @@ import {
   uploadImageToCloudinary,
   uploadMultipleImagesWithPublicIds,
 } from "../../services/cloudinaryService";
+import { VehicleType } from "../../models/Vehicle";
 
 export const isBlank = (v?: string | null) => !v || v.trim() === "";
 
@@ -273,7 +273,7 @@ export const uploadMultipleDriverImages: RequestHandler = async (req, res) => {
       updateObject[`images.${type}`] = url;
     });
 
-    await Driver.findByIdAndUpdate(
+    await DriverModel.findByIdAndUpdate(
       driverId,
       { ...updateObject, registrationStep: step },
       { new: true },
@@ -297,16 +297,25 @@ export const getDriverStatus: RequestHandler = async (req, res) => {
     return res.status(400).json({ message: "driverId required" });
   }
 
-  const driver = await Driver.findById(driverId);
+  const driver = await DriverModel.findById(driverId)
+    .select("approvalStatus registrationStep vehicle")
+    .lean();
 
   if (!driver) {
     return res.status(404).json({ message: "Driver not found" });
   }
 
+  const vehicleType = driver.vehicle
+    ? await VehicleType.findById(driver.vehicle)
+        .select("searchConfig.pooling")
+        .lean()
+    : null;
+
   return res.json({
     success: true,
     approvalStatus: driver.approvalStatus,
     registrationStep: driver.registrationStep,
+    poolingConfig: vehicleType?.searchConfig?.pooling ?? null, // ← add
   });
 };
 
@@ -317,7 +326,7 @@ export const updateServiceAreas: RequestHandler = async (req, res) => {
     return res.status(400).json({ message: "driverId required" });
   }
 
-  const driver = await Driver.findById(driverId);
+  const driver = await DriverModel.findById(driverId);
 
   if (!driver) {
     return res.status(404).json({ message: "Driver not found" });

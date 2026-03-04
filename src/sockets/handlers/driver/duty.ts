@@ -82,6 +82,7 @@ export const toggleOnDuty = (socket: CustomSocket) => {
         const [activeBooking, activePoolingTrip] = await Promise.all([
           BookingModel.findOne({
             status: { $in: ["active", "picked_up"] },
+            "bookingType.type": { $ne: "pooling" },
             driverId: new mongoose.Types.ObjectId(socket.data.userId),
           })
             .populate({
@@ -192,6 +193,7 @@ export const updateDriverLocation = (socket: CustomSocket) => {
   const on = withErrorHandling(socket);
 
   on("updateLocation", async (location: { lat: number; lng: number }) => {
+    console.log(location);
     if (!socket.rooms.has(SOCKET_ROOMS.ON_DUTY)) {
       socket.emit("error", { message: "Driver must be on duty" });
       return;

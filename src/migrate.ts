@@ -12,55 +12,73 @@ const poolingConfigs: Record<
     maxDetourPercent: number;
     maxTotalDistanceKm: number;
     maxTotalTimeMinutes: number;
+    basePickupRadiusKm: number;
+    pickupRadiusGrowthPercent: number;
   }
 > = {
   motorcycle: {
     maxRequests: 5,
     maxDetourPercent: 0.2,
-    maxTotalDistanceKm: 60,
-    maxTotalTimeMinutes: 120,
+    maxTotalDistanceKm: 300,
+    maxTotalTimeMinutes: 480,
+    basePickupRadiusKm: 1.5,
+    pickupRadiusGrowthPercent: 0.04,
   },
   sedan: {
     maxRequests: 4,
     maxDetourPercent: 0.2,
-    maxTotalDistanceKm: 100,
-    maxTotalTimeMinutes: 180,
+    maxTotalDistanceKm: 400,
+    maxTotalTimeMinutes: 600,
+    basePickupRadiusKm: 2,
+    pickupRadiusGrowthPercent: 0.04,
   },
   mpv_suv: {
     maxRequests: 4,
     maxDetourPercent: 0.2,
-    maxTotalDistanceKm: 150,
-    maxTotalTimeMinutes: 240,
+    maxTotalDistanceKm: 500,
+    maxTotalTimeMinutes: 720,
+    basePickupRadiusKm: 2,
+    pickupRadiusGrowthPercent: 0.04,
   },
   light_van: {
     maxRequests: 4,
     maxDetourPercent: 0.2,
-    maxTotalDistanceKm: 150,
-    maxTotalTimeMinutes: 240,
+    maxTotalDistanceKm: 500,
+    maxTotalTimeMinutes: 720,
+    basePickupRadiusKm: 2,
+    pickupRadiusGrowthPercent: 0.04,
   },
   small_pickup: {
     maxRequests: 4,
     maxDetourPercent: 0.15,
-    maxTotalDistanceKm: 200,
-    maxTotalTimeMinutes: 300,
+    maxTotalDistanceKm: 600,
+    maxTotalTimeMinutes: 840,
+    basePickupRadiusKm: 2.5,
+    pickupRadiusGrowthPercent: 0.05,
   },
   l300: {
     maxRequests: 5,
     maxDetourPercent: 0.15,
-    maxTotalDistanceKm: 250,
-    maxTotalTimeMinutes: 360,
+    maxTotalDistanceKm: 700,
+    maxTotalTimeMinutes: 960,
+    basePickupRadiusKm: 3,
+    pickupRadiusGrowthPercent: 0.05,
   },
   closed_van: {
     maxRequests: 3,
     maxDetourPercent: 0.1,
-    maxTotalDistanceKm: 400,
-    maxTotalTimeMinutes: 480,
+    maxTotalDistanceKm: 800,
+    maxTotalTimeMinutes: 1080,
+    basePickupRadiusKm: 3,
+    pickupRadiusGrowthPercent: 0.05,
   },
   wing_van: {
     maxRequests: 2,
     maxDetourPercent: 0.08,
-    maxTotalDistanceKm: 800,
-    maxTotalTimeMinutes: 960,
+    maxTotalDistanceKm: 1200,
+    maxTotalTimeMinutes: 1440,
+    basePickupRadiusKm: 5,
+    pickupRadiusGrowthPercent: 0.06,
   },
 };
 
