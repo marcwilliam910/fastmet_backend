@@ -96,6 +96,27 @@ const handleShutdown = async (signal: string) => {
   });
 };
 
+const logMemoryUsage = () => {
+  const mem = process.memoryUsage();
+
+  console.log("[MEMORY]", {
+    rss: (mem.rss / 1024 / 1024).toFixed(2) + " MB",
+    heapTotal: (mem.heapTotal / 1024 / 1024).toFixed(2) + " MB",
+    heapUsed: (mem.heapUsed / 1024 / 1024).toFixed(2) + " MB",
+    external: (mem.external / 1024 / 1024).toFixed(2) + " MB",
+    arrayBuffers: (mem.arrayBuffers / 1024 / 1024).toFixed(2) + " MB",
+  });
+
+  // TypeScript-safe way to access internal handles
+  const anyProcess = process as any;
+  if (typeof anyProcess._getActiveHandles === "function") {
+    console.log("[ACTIVE HANDLES]", anyProcess._getActiveHandles().length);
+  }
+  if (typeof anyProcess._getActiveRequests === "function") {
+    console.log("[ACTIVE REQUESTS]", anyProcess._getActiveRequests().length);
+  }
+};
+
 process.on("SIGINT", () => {
   void handleShutdown("SIGINT");
 });
@@ -104,7 +125,7 @@ process.on("SIGTERM", () => {
 });
 
 mongoose
-  .connect(process.env.MONGODB_URI!)
+  .connect(process.env.MONGODB_URI!, { maxPoolSize: 10 })
   .then(async () => {
     console.log("MongoDB connected");
 
@@ -117,6 +138,15 @@ mongoose
 
       const io = getIO();
       startWorkers(io);
+
+      setInterval(() => {
+        logMemoryUsage();
+      }, 10000); // every 10 seconds
+
+      // Optional: log socket connections
+      setInterval(() => {
+        console.log("[SOCKET CONNECTIONS]", io.engine.clientsCount);
+      }, 10000);
     });
   })
   .catch((err) => {

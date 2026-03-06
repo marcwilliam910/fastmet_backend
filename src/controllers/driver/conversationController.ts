@@ -147,6 +147,5 @@ export const getUnreadConversationsCount: RequestHandler = async (req, res) => {
     driver: new mongoose.Types.ObjectId(driverId),
     "unreadCount.driver": { $gt: 0 },
   });
-  console.log(unreadConversationsCount);
   res.status(200).json({ unreadConversationsCount });
 };

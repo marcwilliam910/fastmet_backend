@@ -397,7 +397,6 @@ export const markBookingAsRead: RequestHandler = async (req, res) => {
   }
 
   const { status } = req.params as { status: "completed" | "cancelled" };
-  console.log(status);
 
   if (!status || !["completed", "cancelled"].includes(status)) {
     return res.status(400).json({ message: "Invalid status" });

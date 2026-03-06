@@ -174,7 +174,6 @@ export const refreshDriverBookings = async (
     !vehicle ||
     !vehicleVariant
   ) {
-    console.log("Invalid driver session");
     socket.emit("error", { message: "Invalid driver session" });
     return;
   }
@@ -256,10 +255,6 @@ export const refreshDriverBookings = async (
     driverId: null,
   }).lean();
 
-  console.log(
-    `🔍 Found ${asapBookings.length} ASAP bookings, ${scheduledBookings.length} scheduled bookings`,
-  );
-
   // Filter ASAP bookings by proximity
   const nearbyAsapBookings = asapBookings.filter((booking: any) => {
     const distance = calculateDistance(
@@ -289,11 +284,6 @@ export const refreshDriverBookings = async (
     return true;
   });
 
-  console.log(
-    `✅ ${nearbyAsapBookings.length} ASAP bookings within radius, ` +
-      `${eligibleScheduledBookings.length} scheduled bookings in service areas`,
-  );
-
   // Combine and format
   const allEligibleBookings = [
     ...nearbyAsapBookings,
@@ -313,7 +303,6 @@ export const refreshDriverBookings = async (
   for (const room of currentBookingRooms) {
     if (!newBookingRooms.has(room)) {
       socket.leave(room);
-      console.log(`🚪 Driver ${socket.data.userId} left stale room ${room}`);
     }
   }
 
@@ -343,7 +332,7 @@ export const refreshDriverBookings = async (
 
   console.log(
     `📦 Driver ${socket.data.userId} sees ${formattedBookings.length} total bookings ` +
-      `(${nearbyAsapBookings.length} ASAP + ${eligibleScheduledBookings.length} scheduled) + (${poolingBookings.length} pooling)`,
+      `(${nearbyAsapBookings.length} ASAP + ${eligibleScheduledBookings.length} scheduled + ${poolingBookings.length} pooling)`,
   );
 
   socket.emit("pendingBookingsUpdated", {

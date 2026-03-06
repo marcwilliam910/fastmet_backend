@@ -36,8 +36,6 @@ export const savePushToken = async (req: Request, res: Response) => {
     { new: true },
   );
 
-  console.log(`✅ Saved push token for client ${clientId}`);
-
   res.json({
     success: true,
     message: "Push token saved successfully",

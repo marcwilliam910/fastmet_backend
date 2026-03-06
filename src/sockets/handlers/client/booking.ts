@@ -31,8 +31,6 @@ export const requestAsapBooking = (socket: CustomSocket, io: Server) => {
   const on = withErrorHandling(socket);
 
   on("request_asap_booking", async (data: RequestBooking) => {
-    console.log("📨 Booking request received:", data);
-
     // Early validation
     if (!data.selectedVehicle?.key || !data.selectedVehicle?.searchConfig) {
       socket.emit("bookingRequestFailed", {
@@ -76,7 +74,6 @@ export const requestAsapBooking = (socket: CustomSocket, io: Server) => {
     const vehicleType = data.selectedVehicle.variant
       ? `${data.selectedVehicle.key}_${data.selectedVehicle.variant.maxLoadKg}`
       : data.selectedVehicle.key;
-    console.log("VEHICLE TYPE: ", vehicleType);
 
     const client = await UserModel.findById(booking.customerId)
       .select("fullName profilePictureUrl phoneNumber email")
@@ -106,9 +103,6 @@ export const requestAsapBooking = (socket: CustomSocket, io: Server) => {
         delay: 10 * 60 * 1000, // 10 minutes
         jobId: `expiry-${bookingIdStr}`,
       },
-    );
-    console.log(
-      `⏱️  Scheduled 10-minute expiry job for booking ${bookingIdStr}`,
     );
 
     /* ------------------------------------------------------------------ */
@@ -184,8 +178,6 @@ export const requestAsapBooking = (socket: CustomSocket, io: Server) => {
           lat: driverLocation.lat,
           lng: driverLocation.lng,
         });
-
-        console.log(driverSocket.id + " = " + distance);
 
         if (distance > radiusKm) continue;
 
@@ -273,8 +265,6 @@ export const requestScheduleBooking = (socket: CustomSocket, io: Server) => {
   const on = withErrorHandling(socket);
 
   on("request_schedule_booking", async (data: RequestBooking) => {
-    console.log("📨 Schedule booking request received:", data.bookingRef);
-
     // Early validation
     if (
       !data.customerId ||
@@ -390,7 +380,6 @@ export const requestScheduleBooking = (socket: CustomSocket, io: Server) => {
     const vehicleType = data.selectedVehicle.variant
       ? `${data.selectedVehicle.key}_${data.selectedVehicle.variant.maxLoadKg}`
       : data.selectedVehicle.key;
-    console.log("VEHICLE TYPE: ", vehicleType);
 
     if (!vehicleType) {
       socket.emit("booking_request_failed", {
@@ -410,10 +399,6 @@ export const requestScheduleBooking = (socket: CustomSocket, io: Server) => {
         s.rooms.has(SOCKET_ROOMS.AVAILABLE),
     );
 
-    console.log(
-      `🔍 Found ${availableDriverSockets.length} available ${vehicleType} drivers`,
-    );
-
     // 6. Filter by service area directly from socket.data — no DB query needed
     const eligibleDrivers = availableDriverSockets.filter((s) => {
       const areas: string[] = s.data.serviceAreas || [];
@@ -430,10 +415,6 @@ export const requestScheduleBooking = (socket: CustomSocket, io: Server) => {
       return;
     }
 
-    console.log(
-      `🚗 ${eligibleDrivers.length} ${vehicleType} drivers will receive this booking in ${pickupCity}`,
-    );
-
     // 7. Join eligible drivers to booking room
     const temporaryRoom = `BOOKING_${booking._id}`;
 
@@ -443,10 +424,6 @@ export const requestScheduleBooking = (socket: CustomSocket, io: Server) => {
 
     // 8. Emit booking to eligible drivers
     io.to(temporaryRoom).emit("new_booking_request", driverPayload);
-
-    console.log(
-      `📤 Scheduled booking ${booking._id} sent to ${eligibleDrivers.length} drivers in ${pickupCity}`,
-    );
 
     // Schedule client check-in notifications
     await scheduleClientCheckInJobs(
@@ -460,8 +437,6 @@ export const requestPoolingBooking = (socket: CustomSocket, io: Server) => {
   const on = withErrorHandling(socket);
 
   on("request_pooling_booking", async (data: RequestBooking) => {
-    console.log("📨 Schedule booking request received:", data.bookingRef);
-
     // Early validation
     if (
       !data.customerId ||
@@ -568,7 +543,6 @@ export const requestPoolingBooking = (socket: CustomSocket, io: Server) => {
     const vehicleType = data.selectedVehicle.variant
       ? `${data.selectedVehicle.key}_${data.selectedVehicle.variant.maxLoadKg}`
       : data.selectedVehicle.key;
-    console.log("VEHICLE TYPE: ", vehicleType);
 
     if (!vehicleType) {
       socket.emit("booking_request_failed", {
@@ -588,10 +562,6 @@ export const requestPoolingBooking = (socket: CustomSocket, io: Server) => {
         s.rooms.has(SOCKET_ROOMS.AVAILABLE),
     );
 
-    console.log(
-      `🔍 Found ${availableDriverSockets.length} available ${vehicleType} drivers`,
-    );
-
     // 6. Filter by service area directly from socket.data — no DB query needed
     const eligibleDrivers = availableDriverSockets.filter((s) => {
       const areas: string[] = s.data.serviceAreas || [];
@@ -608,10 +578,6 @@ export const requestPoolingBooking = (socket: CustomSocket, io: Server) => {
       return;
     }
 
-    console.log(
-      `🚗 ${eligibleDrivers.length} ${vehicleType} drivers will receive this booking in ${pickupCity}`,
-    );
-
     // 7. Join eligible drivers to booking room
     const temporaryRoom = `BOOKING_${booking._id}`;
 
@@ -621,10 +587,6 @@ export const requestPoolingBooking = (socket: CustomSocket, io: Server) => {
 
     // 8. Emit booking to eligible drivers
     io.to(temporaryRoom).emit("new_booking_request", driverPayload);
-
-    console.log(
-      `📤 Scheduled booking ${booking._id} sent to ${eligibleDrivers.length} drivers in ${pickupCity}`,
-    );
 
     // Schedule client check-in notifications
     await scheduleClientCheckInJobs(
@@ -644,8 +606,6 @@ export const getDriverLocation = (socket: CustomSocket, io: Server) => {
       }
 
       const clientUserId = socket.data.userId;
-
-      console.log("BOOKING ID: ", bookingId);
 
       console.log(`📡 Forwarding location request to driver ${driverId}`);
 
@@ -678,17 +638,12 @@ export const pickDriver = (socket: CustomSocket, io: Server) => {
         return;
       }
 
-      console.log(
-        `🚗 Customer attempting to pick driver ${driverId} for booking ${bookingId}`,
-      );
-
       const haveActiveBooking = await BookingModel.exists({
         driverId: new mongoose.Types.ObjectId(driverId),
         status: "active",
       });
 
       if (haveActiveBooking) {
-        console.log("Driver already has an active booking");
         socket.emit("error", {
           message: "You already has an active booking",
         });
@@ -702,7 +657,6 @@ export const pickDriver = (socket: CustomSocket, io: Server) => {
       }).lean();
 
       if (!existingBooking) {
-        console.log("Booking not found or already accepted");
         socket.emit("error", {
           message: "Booking not found or already accepted",
         });
@@ -715,7 +669,6 @@ export const pickDriver = (socket: CustomSocket, io: Server) => {
       );
 
       if (!wasRequested) {
-        console.log("Driver offer was cancelled or not requested");
         socket.emit("error", {
           message:
             "This offer is no longer available. The driver may have cancelled it.",
@@ -739,7 +692,6 @@ export const pickDriver = (socket: CustomSocket, io: Server) => {
       );
 
       if (!booking) {
-        console.log("Booking not found");
         socket.emit("error", {
           message: "Sorry, booking not found",
         });
@@ -755,7 +707,7 @@ export const pickDriver = (socket: CustomSocket, io: Server) => {
         );
         if (expiryJob) {
           await expiryJob.remove();
-          console.log(`⏹️  Removed expiry job for booking ${bookingId}`);
+          console.log(`⏹️ Removed expiry job for booking ${bookingId}`);
         }
       } catch (err) {
         console.log(`Could not remove expiry job for ${bookingId}:`, err);
@@ -840,8 +792,6 @@ export const pickDriver = (socket: CustomSocket, io: Server) => {
               notifMessage,
               { bookingId: booking._id, type: "new_scheduled_ride" },
             );
-
-            console.log(`📩 Notification created for driver ${driverId}`);
           }
 
           // Accepted driver
@@ -883,10 +833,6 @@ export const pickDriver = (socket: CustomSocket, io: Server) => {
               rejectedMessage,
               { bookingId: booking._id, type: "booking_taken" },
             );
-
-            console.log(
-              `📩 Notification created for rejected driver ${requestedDriverIdStr}`,
-            );
           }
 
           // Rejected drivers
@@ -907,11 +853,6 @@ export const pickDriver = (socket: CustomSocket, io: Server) => {
       /* ------------------------------------------------------------------ */
       const socketsInRoom = await io.in(temporaryRoom).fetchSockets();
       socketsInRoom.forEach((s) => s.leave(temporaryRoom));
-
-      console.log(
-        `🧹 Cleared ${socketsInRoom.length} sockets from ${temporaryRoom}`,
-      );
-      console.log(`✅ Booking ${bookingId} assigned to driver ${driverId}`);
     },
   );
 };
@@ -930,8 +871,6 @@ export const cancelBooking = (socket: CustomSocket, io: Server) => {
       return;
     }
 
-    console.log(`🚗 Customer attempting to cancel booking ${bookingId}`);
-
     const booking = await BookingModel.findOneAndUpdate(
       { _id: bookingId, status: { $in: ["pending", "searching"] } },
       {
@@ -942,7 +881,6 @@ export const cancelBooking = (socket: CustomSocket, io: Server) => {
     );
 
     if (!booking) {
-      console.log("Booking not found");
       socket.emit("error", {
         message: "Booking not found",
       });
@@ -981,11 +919,6 @@ export const cancelBooking = (socket: CustomSocket, io: Server) => {
     /* ------------------------------------------------------------------ */
     const socketsInRoom = await io.in(temporaryRoom).fetchSockets();
     socketsInRoom.forEach((s) => s.leave(temporaryRoom));
-
-    console.log(
-      `🧹 Cleared ${socketsInRoom.length} sockets from ${temporaryRoom}`,
-    );
-    console.log(`✅ Booking ${bookingId} cancelled`);
   });
 };
 

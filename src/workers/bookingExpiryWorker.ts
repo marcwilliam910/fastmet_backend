@@ -14,20 +14,14 @@ export const startBookingExpiryWorker = (io: Server) => {
     async (job: Job<BookingExpiryJobData>) => {
       const { bookingId } = job.data;
 
-      console.log(`⏰ Processing expiry job for booking ${bookingId}`);
-
       // Check if booking still exists and is still "searching"
       const booking = await BookingModel.findById(bookingId).lean();
 
       if (!booking) {
-        console.log(`Booking ${bookingId} no longer exists, skipping`);
         return;
       }
 
       if (booking.status !== "searching") {
-        console.log(
-          `Booking ${bookingId} status is "${booking.status}", not "searching", skipping`,
-        );
         return;
       }
 
@@ -74,8 +68,6 @@ export const startBookingExpiryWorker = (io: Server) => {
       // Cleanup room - remove all sockets from the room
       const socketsInRoom = await io.in(temporaryRoom).fetchSockets();
       socketsInRoom.forEach((s) => s.leave(temporaryRoom));
-
-      console.log(`🗑️  Deleted expired booking ${bookingId}`);
     },
     {
       connection: redisConnection,

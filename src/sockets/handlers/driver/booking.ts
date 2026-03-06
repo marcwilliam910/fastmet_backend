@@ -75,8 +75,6 @@ export const handleStartScheduledTrip = (socket: CustomSocket) => {
         return;
       }
 
-      console.log(`🚗 Driver ${driverId} starting scheduled trip ${bookingId}`);
-
       // Parallelize: Check for active booking and fetch the scheduled booking
       const [hasActive, booking] = await Promise.all([
         BookingModel.exists({
@@ -148,8 +146,6 @@ export const handleStartScheduledTrip = (socket: CustomSocket) => {
           },
         },
       );
-
-      console.log(`✅ Trip ${bookingId} status changed: scheduled → active`);
 
       const { customerId, selectedVehicle, ...rest } = booking as any;
 
@@ -322,8 +318,6 @@ export const requestAcceptance = (socket: CustomSocket, io: Server) => {
         $addToSet: { requestedDrivers: driverId },
       });
 
-      console.log(`🚗 Driver ${driverId} offered for booking ${bookingId}`);
-
       const driverPayload = {
         id: driverId,
         name: payload.name,
@@ -424,10 +418,6 @@ export const requestAcceptance = (socket: CustomSocket, io: Server) => {
           unreadNotifications,
           notification,
         });
-
-        console.log(
-          `📩 Notification sent to client ${clientUserId} for driver offer`,
-        );
       }
 
       // Confirm to driver
@@ -453,8 +443,6 @@ export const cancelOffer = (socket: CustomSocket, io: Server) => {
       bookingType?: "asap" | "schedule";
     }) => {
       const { clientId, id, bookingId, bookingType } = payload;
-
-      console.log(payload);
 
       if (!clientId || !id || !bookingId) {
         socket.emit("offerCancelledConfirmedError", {
@@ -663,10 +651,6 @@ export const acceptPoolingBookings = (socket: CustomSocket, io: Server) => {
       ),
     ]);
 
-    console.log(
-      `✅ Pooling trip ${poolingTrip._id} created for driver ${driverId}`,
-    );
-
     /* ------------------------------------------------------------------ */
     /* 5. FORMAT BOOKINGS FOR FRONTEND                                      */
     /* ------------------------------------------------------------------ */
@@ -695,10 +679,6 @@ export const acceptPoolingBookings = (socket: CustomSocket, io: Server) => {
           },
         ),
       ),
-    );
-
-    console.log(
-      `📡 Emitted poolingTripStarted to driver ${driverId} with ${stops.length} stops`,
     );
   });
 };
@@ -915,10 +895,6 @@ export const addToPoolingTrip = (socket: CustomSocket, io: Server) => {
     const addedDistanceKm = newTotalDistance - activeTrip.totalDistance;
     const addedDurationMinutes = newTotalDuration - activeTrip.totalDuration;
 
-    console.log(
-      `✅ Booking ${bookingId} added to pooling trip ${activeTrip._id}`,
-    );
-
     socket.emit("poolingTripUpdated", {
       tripId: updatedTrip._id.toString(),
       stops: updatedTrip.stops.map((s) => ({
@@ -1011,10 +987,6 @@ export const poolingTripCompleted = (socket: CustomSocket, io: Server) => {
       ),
     ]);
 
-    console.log(
-      `✅ Pooling trip ${tripId} completed for driver ${driverId} with ${trip.bookingIds.length} bookings`,
-    );
-
     /* ------------------------------------------------------------------ */
     /* 5. EMIT CONFIRMATION BACK TO DRIVER                                  */
     /* ------------------------------------------------------------------ */
@@ -1023,10 +995,6 @@ export const poolingTripCompleted = (socket: CustomSocket, io: Server) => {
       completedAt,
       totalBookings: trip.bookingIds.length,
     });
-
-    console.log(
-      `📡 Emitted poolingTripCompletedConfirmed to driver ${driverId}`,
-    );
   });
 };
 
@@ -1036,8 +1004,6 @@ export const updatePoolingLocation = (socket: CustomSocket) => {
   on("updatePoolingLocation", async (data: UpdatePoolingLocationPayload) => {
     const { lat, lng, poolingConfig } = data;
     const driverId = socket.data.userId;
-
-    console.log("updatePoolingLocation called: ", data);
 
     /* 1. FETCH ACTIVE TRIP */
     const activeTrip = await PoolingTripModel.findOne({
@@ -1086,7 +1052,6 @@ export const updatePoolingLocation = (socket: CustomSocket) => {
       driverId: null,
     }).lean();
 
-    console.log(pendingBookings);
     if (pendingBookings.length === 0) return;
 
     /* 7. FORMAT REMAINING STOPS */
@@ -1135,12 +1100,6 @@ export const updatePoolingLocation = (socket: CustomSocket) => {
           newPickup,
           newDropoff,
         );
-
-      console.log("remainingDistanceKm:", remainingDistanceKm);
-      console.log("addedDistanceKm:", addedDistanceKm);
-      console.log("detourPercent:", addedDistanceKm / remainingDistanceKm);
-      console.log("maxDetourPercent:", poolingConfig.maxDetourPercent);
-      console.log("remainingStops count:", remainingStops.length);
 
       // Condition 2 — detour percent vs remaining distance
       if (

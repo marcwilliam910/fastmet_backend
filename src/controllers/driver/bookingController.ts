@@ -404,7 +404,6 @@ export const uploadReceipt: RequestHandler = async (req, res) => {
 
 export const getCompletedCountData: RequestHandler = async (req, res) => {
   const driverId = getUserId(req);
-  console.log(driverId);
   if (!driverId) {
     return res.status(401).json({ error: "Unauthorized" });
   }
@@ -424,8 +423,6 @@ export const getCompletedCountData: RequestHandler = async (req, res) => {
       },
     },
   ]);
-
-  console.log(result);
 
   return res.status(200).json({
     totalBooked: result[0]?.count || 0,

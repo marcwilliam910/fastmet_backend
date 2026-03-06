@@ -34,8 +34,6 @@ export const savePushToken = async (req: Request, res: Response) => {
     { new: true },
   );
 
-  console.log(`✅ Saved push token for driver ${driverId}`);
-
   res.json({
     success: true,
     message: "Push token saved successfully",

@@ -60,8 +60,6 @@ export const addDriverProfile: RequestHandler = async (req, res) => {
     vehicleVariant: string;
   };
 
-  console.log(vehicleVariant);
-
   // Validation
   if (!driverId) {
     return res.status(400).json({

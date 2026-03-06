@@ -18,10 +18,6 @@ export function chatHandler(socket: CustomSocket, io: Server) {
     const conversationId = createConversationId(clientId, driverId);
     socket.join(conversationId);
 
-    console.log(
-      `${socket.data.userType} ${socket.data.userId} joined room: ${conversationId}`,
-    );
-
     await ConversationModel.findByIdAndUpdate(
       conversationId,
       {
@@ -139,10 +135,6 @@ export function chatHandler(socket: CustomSocket, io: Server) {
       conversationId,
       profilePictureUrl,
     });
-
-    console.log(
-      `Message sent to conversation ${conversationId} and user ${receiverId}`,
-    );
   });
 
   // LEAVE ROOM
@@ -171,6 +163,5 @@ export function chatHandler(socket: CustomSocket, io: Server) {
     io.to(socket.data.userId).emit("unread_conversations_updated", {
       unreadConversationsCount,
     });
-    console.log(`${socket.data.userType} left room: ${conversationId}`);
   });
 }

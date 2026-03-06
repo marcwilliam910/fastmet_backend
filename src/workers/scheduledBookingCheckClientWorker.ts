@@ -24,20 +24,14 @@ export const processScheduledBookingCheckClientJob = async (
 ) => {
   const { bookingId, checkpoint } = jobData;
 
-  console.log(`Scheduled check ${checkpoint} for booking ${bookingId}`);
-
   const booking = await BookingModel.findById(bookingId).lean();
 
   if (!booking) {
-    console.log(`Booking ${bookingId} no longer exists, skipping`);
     return;
   }
 
   // Already has a driver or is no longer pending
   if (booking.driverId || booking.status !== "pending") {
-    console.log(
-      `Booking ${bookingId} already resolved (status: ${booking.status}), skipping`,
-    );
     return;
   }
 

@@ -70,8 +70,6 @@ export const toggleOnDuty = (socket: CustomSocket) => {
         socket.data.vehicle = driver.vehicle;
         socket.data.vehicleVariant = driver.vehicleVariant;
 
-        console.log(socket.data);
-
         console.log(
           `✅ Driver ${socket.data.userId} is ON DUTY at`,
           location,
@@ -193,7 +191,6 @@ export const updateDriverLocation = (socket: CustomSocket) => {
   const on = withErrorHandling(socket);
 
   on("updateLocation", async (location: { lat: number; lng: number }) => {
-    console.log(location);
     if (!socket.rooms.has(SOCKET_ROOMS.ON_DUTY)) {
       socket.emit("error", { message: "Driver must be on duty" });
       return;

@@ -24,25 +24,18 @@ export const processScheduledBookingCheckDriverJob = async (
 ) => {
   const { bookingId, checkpoint, driverId } = jobData;
 
-  console.log(`Scheduled check ${checkpoint} for booking ${bookingId}`);
-
   const booking = await BookingModel.findById(bookingId).lean();
 
   if (!booking) {
-    console.log(`Booking ${bookingId} no longer exists, skipping`);
     return;
   }
 
   if (booking.driverId?.toString() !== driverId) {
-    console.log(
-      `Booking ${bookingId} is not assigned to driver ${driverId}, skipping`,
-    );
     return;
   }
 
   if (checkpoint === "T5") {
     if (booking.status !== "scheduled") {
-      console.log(`Booking ${bookingId} is not scheduled, skipping`);
       return;
     }
 
@@ -62,7 +55,6 @@ export const processScheduledBookingCheckDriverJob = async (
 
   if (checkpoint === "T2") {
     if (booking.status !== "scheduled") {
-      console.log(`Booking ${bookingId} is not scheduled, skipping`);
       return;
     }
 

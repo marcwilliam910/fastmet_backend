@@ -52,17 +52,6 @@ export const cheapestInsertionMidTrip = (
   let bestPickupPos = 0;
   let bestDropoffPos = 1;
 
-  console.log("=== cheapestInsertionMidTrip ===");
-  console.log("driverCoords:", driverCoords);
-  console.log("newPickup:", newPickup.coords);
-  console.log("newDropoff:", newDropoff.coords);
-  console.log(
-    "remainingStops:",
-    remainingStops.map(
-      (s, i) => `[${i}] ${s.label} lat=${s.coords.lat} lng=${s.coords.lng}`,
-    ),
-  );
-
   // Try all valid (pickupPos, dropoffPos) combinations
   // pickupPos: 0 = after driver, 1 = after first stop, etc.
   // dropoffPos must be > pickupPos
@@ -103,14 +92,8 @@ export const cheapestInsertionMidTrip = (
         bestPickupPos = pi;
         bestDropoffPos = di;
       }
-
-      console.log(`pi=${pi} di=${di} total=${totalCost.toFixed(4)}`);
     }
   }
-
-  console.log(
-    `WINNER: pi=${bestPickupPos} di=${bestDropoffPos} cost=${bestCost.toFixed(4)}`,
-  );
 
   // Build final stops array
   const pickup: PoolingStop = {

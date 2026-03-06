@@ -22,7 +22,7 @@ export interface IDriver extends Document {
   preRegId?: Types.ObjectId;
   licenseNumber?: string;
   images: {
-    selfie?: string;
+    license?: string;
     selfieWithLicense?: string;
     frontView?: string;
     sideLeftView?: string;
@@ -131,7 +131,7 @@ const driverSchema = new Schema<IDriver>(
 
     images: {
       // Step 1
-      selfie: { type: String, default: null },
+      license: { type: String, default: null },
       selfieWithLicense: { type: String, default: null },
 
       // Step 2 – Vehicle Exterior
