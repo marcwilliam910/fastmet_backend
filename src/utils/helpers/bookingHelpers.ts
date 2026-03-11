@@ -307,7 +307,7 @@ export const refreshDriverBookings = async (
   }
 
   const formattedBookings = allEligibleBookings.map((booking: any) => {
-    const temporaryRoom = `BOOKING_${booking._id}`;
+    const temporaryRoom = `BOOKING_${booking._id.toString()}`;
     socket.join(temporaryRoom);
 
     const { customerId, selectedVehicle, ...rest } = booking;

@@ -35,6 +35,8 @@ export const getBookingsByStatus: RequestHandler = async (req, res) => {
     return res.status(400).json({ message: "Missing user ID" });
   }
 
+  console.log("client id: ", clientId);
+
   const { status, page = 1, limit = 5 } = req.query;
 
   const pageNum = Number(page);
@@ -411,4 +413,58 @@ export const markBookingAsRead: RequestHandler = async (req, res) => {
     message: "Bookings marked as read",
     modifiedCount: result.modifiedCount,
   });
+};
+
+export const getRecentBookings: RequestHandler = async (req, res) => {
+  const limit = req.query.limit ? parseInt(req.query.limit as string) : 10;
+  const clientId = getUserId(req);
+
+  if (!clientId) {
+    return res.status(400).json({ message: "Missing user ID" });
+  }
+
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+  const recentBookings = await BookingModel.find({
+    customerId: new mongoose.Types.ObjectId(clientId),
+    $or: [
+      { status: { $in: ["active", "scheduled"] } },
+      { status: "completed", createdAt: { $gte: thirtyDaysAgo } },
+    ],
+  })
+    .sort({ createdAt: -1 })
+    .populate<{ selectedVehicle: { vehicleTypeId: { name: string } } }>(
+      "selectedVehicle.vehicleTypeId",
+      "name",
+    )
+    .populate<{ driverId: { firstName: string; lastName: string } }>(
+      "driverId",
+      "firstName lastName",
+    )
+    .limit(limit)
+    .lean();
+
+  const formattedBookings = recentBookings.map((booking) => ({
+    ...booking,
+    selectedVehicle: {
+      name: booking.selectedVehicle.vehicleTypeId?.name,
+    },
+    driver: {
+      name: booking.driverId
+        ? `${booking.driverId.firstName} ${booking.driverId.lastName}`
+        : null,
+    },
+  }));
+
+  // const formattedBookings = await BookingModel.find()
+  //   .sort({ createdAt: -1 })
+  //   .populate<{
+  //     selectedVehicle: { vehicleTypeId: { name: string } };
+  //   }>("selectedVehicle.vehicleTypeId", "name")
+  //   .populate<{
+  //     driverId: { firstName: string; lastName: string };
+  //   }>("driverId", "firstName lastName")
+  //   .lean();
+  res.status(200).json(formattedBookings);
 };

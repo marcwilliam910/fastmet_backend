@@ -638,16 +638,19 @@ export const pickDriver = (socket: CustomSocket, io: Server) => {
         return;
       }
 
-      const haveActiveBooking = await BookingModel.exists({
-        driverId: new mongoose.Types.ObjectId(driverId),
-        status: "active",
-      });
-
-      if (haveActiveBooking) {
-        socket.emit("error", {
-          message: "You already has an active booking",
+      if (payload.type === "asap") {
+        const haveActiveBooking = await BookingModel.exists({
+          driverId: new mongoose.Types.ObjectId(driverId),
+          status: "active",
         });
-        return;
+
+        if (haveActiveBooking) {
+          socket.emit("error", {
+            message:
+              "Driver already has an active booking, please pick another driver",
+          });
+          return;
+        }
       }
 
       // Check if the booking exists and is pending (using lean for read-only check)
@@ -925,7 +928,16 @@ export const cancelBooking = (socket: CustomSocket, io: Server) => {
 export const asapTimerEnd = (socket: CustomSocket, io: Server) => {
   socket.on(
     "asapTimerEnd",
-    (payload: { driverId: string; bookingId: string }) => {
+    async (payload: { driverId: string; bookingId: string }) => {
+      //remove the driver on requestedDrivers so they can request again
+      await BookingModel.findOneAndUpdate(
+        { _id: payload.bookingId },
+        {
+          $pull: {
+            requestedDrivers: payload.driverId,
+          },
+        },
+      );
       io.to(payload.driverId).emit("timerEnd", {
         bookingId: payload.bookingId,
       });

@@ -123,15 +123,16 @@ export const handleStartScheduledTrip = (socket: CustomSocket) => {
         return;
       }
 
-      // Check if it's within the allowed time window (15 minutes before)
       const now = new Date();
       const scheduledTime = new Date(booking.bookingType.value);
       const minutesUntil = (scheduledTime.getTime() - now.getTime()) / 60000;
 
-      if (minutesUntil > 15) {
+      const ALLOWED_WINDOW_MINUTES = 120;
+
+      if (minutesUntil > ALLOWED_WINDOW_MINUTES) {
         socket.emit("startScheduledTripError", {
           message: `Too early. You can start this trip ${Math.ceil(
-            minutesUntil - 15,
+            minutesUntil - ALLOWED_WINDOW_MINUTES,
           )} minutes from now.`,
         });
         return;

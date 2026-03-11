@@ -165,7 +165,7 @@ async function autoRemoveDriverFromBooking(
   const unreadNotifications = await NotificationModel.countDocuments({
     userId: updated.customerId,
     userType: {
-      $in: ["Driver", "All"],
+      $in: ["Client", "All"],
     },
     isRead: false,
   });

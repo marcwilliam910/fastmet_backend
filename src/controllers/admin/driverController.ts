@@ -16,7 +16,7 @@ export const driverStatusUpdate: RequestHandler = async (req, res) => {
   const driver = await DriverModel.findByIdAndUpdate(
     driverId,
     { approvalStatus },
-    { new: true }
+    { new: true },
   );
   if (!driver) {
     return res.status(404).json({
@@ -36,8 +36,8 @@ export const driverStatusUpdate: RequestHandler = async (req, res) => {
 
 export const approveAllDrivers: RequestHandler = async (req, res) => {
   const drivers = await DriverModel.updateMany(
-    { approvalStatus: "pending" },
-    { approvalStatus: "approved" }
+    { approvalStatus: "pending", registrationStep: 5 },
+    { approvalStatus: "approved" },
   );
   if (!drivers) {
     return res.status(404).json({

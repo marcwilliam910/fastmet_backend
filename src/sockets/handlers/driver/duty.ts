@@ -195,7 +195,6 @@ export const updateDriverLocation = (socket: CustomSocket) => {
       socket.emit("error", { message: "Driver must be on duty" });
       return;
     }
-
     socket.data.location = location;
     await refreshDriverBookings(socket, location);
   });
@@ -241,7 +240,6 @@ export const setDriverAvailable = (socket: CustomSocket) => {
         });
         return;
       }
-
       await refreshDriverBookings(socket, socket.data.location);
     },
   );

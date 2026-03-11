@@ -37,16 +37,16 @@ const PORT = process.env.PORT || 3000;
 
 app.set("trust proxy", 1); // trust first proxy
 
-app.use((req, _res, next) => {
-  if (process.env.NODE_ENV !== "production") {
-    console.log("[IP Debug]", {
-      "req.ip": req.ip, // what Express resolves (what rate limiter uses)
-      "x-forwarded-for": req.headers["x-forwarded-for"], // raw header from proxy chain
-      "x-real-ip": req.headers["x-real-ip"], // some proxies set this instead
-    });
-  }
-  next();
-});
+// app.use((req, _res, next) => {
+//   if (process.env.NODE_ENV !== "production") {
+//     console.log("[IP Debug]", {
+//       "req.ip": req.ip, // what Express resolves (what rate limiter uses)
+//       "x-forwarded-for": req.headers["x-forwarded-for"], // raw header from proxy chain
+//       "x-real-ip": req.headers["x-real-ip"], // some proxies set this instead
+//     });
+//   }
+//   next();
+// });
 
 app.use(
   cors({
@@ -139,14 +139,14 @@ mongoose
       const io = getIO();
       startWorkers(io);
 
-      setInterval(() => {
-        logMemoryUsage();
-      }, 10000); // every 10 seconds
+      // setInterval(() => {
+      //   logMemoryUsage();
+      // }, 10000); // every 10 seconds
 
-      // Optional: log socket connections
-      setInterval(() => {
-        console.log("[SOCKET CONNECTIONS]", io.engine.clientsCount);
-      }, 10000);
+      // // Optional: log socket connections
+      // setInterval(() => {
+      //   console.log("[SOCKET CONNECTIONS]", io.engine.clientsCount);
+      // }, 10000);
     });
   })
   .catch((err) => {

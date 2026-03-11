@@ -126,7 +126,7 @@ export const getAllBookingsCount: RequestHandler = async (req, res) => {
 
   const totalActiveBookings = await BookingModel.countDocuments({
     driverId: new mongoose.Types.ObjectId(driverId),
-    status: "active",
+    status: { $in: ["active", "picked_up"] },
   });
 
   const totalCompletedBookings = await BookingModel.countDocuments({

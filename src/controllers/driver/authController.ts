@@ -86,7 +86,7 @@ export const verifyOTP: RequestHandler = async (req, res) => {
       ...(preReg && {
         firstName: preReg.firstName,
         lastName: preReg.lastName,
-        vehicle: new mongoose.Types.ObjectId(preReg.vehicle),
+        vehicle: preReg.vehicle,
         preRegId: preReg._id,
       }),
     });

@@ -42,12 +42,51 @@ export const getConversations: RequestHandler = async (req, res) => {
 export const getConversationById: RequestHandler = async (req, res) => {
   const { conversationId } = req.params;
 
-  const conversation = await ConversationModel.findById(conversationId)
+  let conversation = await ConversationModel.findById(conversationId)
     .populate("driver", "firstName lastName profilePictureUrl phoneNumber")
     .lean();
 
+  // If conversation does not exist, create it
   if (!conversation) {
-    return res.status(404).json({ message: "Conversation not found" });
+    const [id1, id2] = conversationId.split("_");
+
+    if (!id1 || !id2) {
+      return res
+        .status(400)
+        .json({ message: "Invalid conversation ID format." });
+    }
+
+    const clientId = getUserId(req);
+    let driverId: string | undefined;
+
+    // Determine which ID belongs to driver
+    if (clientId === id1) {
+      driverId = id2;
+    } else if (clientId === id2) {
+      driverId = id1;
+    } else {
+      return res
+        .status(403)
+        .json({ message: "You are not authorized for this conversation." });
+    }
+
+    const newConversation = new ConversationModel({
+      _id: conversationId,
+      client: clientId,
+      driver: driverId,
+    });
+
+    await newConversation.save();
+
+    conversation = await ConversationModel.findById(conversationId)
+      .populate("driver", "firstName lastName profilePictureUrl phoneNumber")
+      .lean();
+
+    if (!conversation) {
+      return res
+        .status(500)
+        .json({ message: "Failed to create conversation." });
+    }
   }
 
   res.json(conversation);

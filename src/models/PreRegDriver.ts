@@ -26,10 +26,14 @@ const PreRegDriverSchema = new Schema(
       trim: true,
     },
     vehicle: {
-      type: String,
-      required: true,
-      enum: ["car", "motorcycle", "truck", "van"],
+      type: Schema.Types.ObjectId,
+      ref: "VehicleType",
     },
+
+    vehicleVariant: {
+      type: Schema.Types.ObjectId,
+    },
+
     isEmailVerified: {
       type: Boolean,
       default: false,
@@ -39,7 +43,7 @@ const PreRegDriverSchema = new Schema(
       default: false,
     },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 export const PreRegDriverModel = model("Pre_Reg_Driver", PreRegDriverSchema);
