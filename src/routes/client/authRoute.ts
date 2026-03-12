@@ -1,13 +1,13 @@
-import { Router } from "express";
-import { sendOTP, verifyOTP } from "../../controllers/client/authController";
-import {
-  otpSendLimiter,
-  otpVerifyLimiter,
-} from "../../middlewares/otpSendLimiter";
+// import { Router } from "express";
+// import { sendOTP, verifyOTP } from "../../controllers/client/authController";
+// import {
+//   otpSendLimiter,
+//   otpVerifyLimiter,
+// } from "../../middlewares/otpSendLimiter";
 
-const router = Router();
+// const router = Router();
 
-router.post("/send-otp", otpSendLimiter, sendOTP);
-router.post("/verify-otp", otpVerifyLimiter, verifyOTP);
+// router.post("/send-otp", otpSendLimiter, sendOTP);
+// router.post("/verify-otp", otpVerifyLimiter, verifyOTP);
 
-export default router;
+// export default router;

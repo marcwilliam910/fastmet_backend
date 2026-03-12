@@ -10,7 +10,7 @@ import { getIO, initSocket } from "./sockets/socket";
 // client routes
 import bookingRoute from "./routes/client/bookingRoute";
 import profileClientRoute from "./routes/client/profileRoute";
-import authClientRoute from "./routes/client/authRoute";
+// import authClientRoute from "./routes/client/authRoute";
 import conversationClientRoute from "./routes/client/conversationRoute";
 import notificationClientRoutes from "./routes/client/notificationRoute";
 // driver routes
@@ -26,8 +26,10 @@ import driverAdminRoute from "./routes/admin/driverRoute";
 // for all
 import vehicleRoute from "./routes/vehicleRoute";
 import bookingTypeRoute from "./routes/bookingTypeRoute";
+import otpRoute from "./routes/otpRoute";
+import registrationRoute from "./routes/registrationRoute";
 
-import { authenticateJWT } from "./middlewares/verifyToken";
+import { authenticateJWT, requireVerifyToken } from "./middlewares/verifyToken";
 import { shutdownWorkers, startWorkers } from "./workers/bootstrap";
 import { syncIndexes } from "./scripts/syncIndexes";
 import { populate } from "./migrate";
@@ -58,13 +60,13 @@ app.use(
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-app.use("/api/client/auth", authClientRoute);
+// app.use("/api/client/auth", authClientRoute);
 app.use("/api/client/profile", authenticateJWT, profileClientRoute);
 app.use("/api/client/booking", authenticateJWT, bookingRoute);
 app.use("/api/client/message", authenticateJWT, conversationClientRoute);
 app.use("/api/client/notifications", authenticateJWT, notificationClientRoutes);
 
-app.use("/api/driver/auth", authDriverRoute);
+app.use("/api/driver/auth", requireVerifyToken, authDriverRoute);
 app.use("/api/driver/booking", authenticateJWT, driverBookingRoute);
 app.use("/api/driver/profile", authenticateJWT, profileDriverRoute);
 app.use("/api/driver/message", authenticateJWT, conversationDriverRoute);
@@ -73,8 +75,13 @@ app.use("/api/driver/notifications", authenticateJWT, notificationDriverRoutes);
 // admin routes
 app.use("/api/admin/driver", driverAdminRoute);
 
+// shared
 app.use("/api/vehicles", vehicleRoute);
 app.use("/api/booking-types", bookingTypeRoute);
+app.use("/api/register", registrationRoute);
+
+//driver, user, website
+app.use("/api/auth", otpRoute);
 
 const server = http.createServer(app);
 

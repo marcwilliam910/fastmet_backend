@@ -5,5 +5,6 @@ declare namespace Express {
       phoneNumber: string;
       userType: "driver" | "client";
     };
+    verifiedPhone: string;
   }
 }

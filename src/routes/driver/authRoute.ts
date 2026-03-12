@@ -1,13 +1,8 @@
 import { Router } from "express";
-import { sendOTP, verifyOTP } from "../../controllers/driver/authController";
-import {
-  otpSendLimiter,
-  otpVerifyLimiter,
-} from "../../middlewares/otpSendLimiter";
+import { login } from "../../controllers/driver/authController";
 
 const router = Router();
 
-router.post("/send-otp", otpSendLimiter, sendOTP);
-router.post("/verify-otp", otpVerifyLimiter, verifyOTP);
+router.post("/login", login);
 
 export default router;
