@@ -15,6 +15,8 @@ export function normalizePHPhoneNumber(phoneNumber: string): string | null {
 }
 
 const MAX_OTP_REQUESTS_PER_MINUTE = 3;
+const RATE_LIMIT_WINDOW_SECONDS = 600;
+
 const MAX_VERIFY_ATTEMPTS = 5;
 
 const RATE_LIMIT_SCRIPT = `
@@ -46,7 +48,7 @@ export async function checkPhoneRateLimit(
     1, // number of KEYS
     key, // KEYS[1]
     String(MAX_OTP_REQUESTS_PER_MINUTE), // ARGV[1]
-    "60", // ARGV[2] — TTL in seconds
+    RATE_LIMIT_WINDOW_SECONDS, // ARGV[2] — TTL in seconds
   )) as number;
 
   return count <= MAX_OTP_REQUESTS_PER_MINUTE;

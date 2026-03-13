@@ -10,7 +10,7 @@ import { getIO, initSocket } from "./sockets/socket";
 // client routes
 import bookingRoute from "./routes/client/bookingRoute";
 import profileClientRoute from "./routes/client/profileRoute";
-// import authClientRoute from "./routes/client/authRoute";
+import authClientRoute from "./routes/client/authRoute";
 import conversationClientRoute from "./routes/client/conversationRoute";
 import notificationClientRoutes from "./routes/client/notificationRoute";
 // driver routes
@@ -60,7 +60,7 @@ app.use(
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// app.use("/api/client/auth", authClientRoute);
+app.use("/api/client/auth", requireVerifyToken, authClientRoute);
 app.use("/api/client/profile", authenticateJWT, profileClientRoute);
 app.use("/api/client/booking", authenticateJWT, bookingRoute);
 app.use("/api/client/message", authenticateJWT, conversationClientRoute);

@@ -13,7 +13,6 @@ export const login: RequestHandler = async (req, res) => {
   }).populate("vehicle", "key variants");
   let status: "existing" | "pre-registered" | "new";
 
-  // If not, create with phone number only (check pre-reg if needed)
   if (!driver) {
     const preReg = await PreRegDriverModel.findOne({
       phoneNumber: normalizedNumber,
@@ -83,6 +82,7 @@ export const login: RequestHandler = async (req, res) => {
       vehicle: vehicleVariantLoad
         ? `${vehicleKey}_${vehicleVariantLoad}`
         : vehicleKey,
+      preRegistered: driver.preRegId ? true : false,
     },
   });
 };

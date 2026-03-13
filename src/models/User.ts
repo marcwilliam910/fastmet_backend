@@ -34,6 +34,10 @@ const userSchema = new Schema(
     address: { type: userAddressSchema, default: null },
     profilePictureUrl: { type: String },
     isProfileComplete: { type: Boolean, default: false },
+    preRegId: {
+      type: Schema.Types.ObjectId,
+      ref: "PreRegUser",
+    },
     expoPushToken: {
       type: String,
       default: null,
